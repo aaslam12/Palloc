@@ -1,0 +1,13 @@
+/build/
+/cmake/
+/.vscode/
+/.idea/
+/.cache/
+/Testing/
+*.o
+*.obj
+*.exe
+*.out
+*.log
+compile_commands.json
+
