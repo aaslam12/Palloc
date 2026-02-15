@@ -2,16 +2,23 @@
 
 #include <cstddef>
 
+namespace AL
+{
 class arena
 {
 public:
-    arena();
+    arena(size_t bytes);
 
     ~arena();
 
     // allocates a block of memory of specified length from the arena
     // returns: nullptr if failed, else the memory address of the block of memory
     void* alloc(size_t length);
+
+    // allocates a block of memory of specified length from the arena
+    // also zeroes out the memory returned
+    // returns: nullptr if failed, else the memory address of the block of memory
+    void* calloc(size_t length);
 
     // frees the entire arena but keeps it alive to reuse
     // returns: -1 if failed
@@ -24,7 +31,8 @@ public:
     size_t get_capacity() const;
 
 private:
-    void* memory;
+    std::byte* memory;
     size_t used;
     size_t capacity;
 };
+} // namespace AL
