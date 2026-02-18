@@ -16,6 +16,11 @@ public:
     pool(size_t block_size, size_t block_count);
     ~pool();
 
+    pool(const pool&) = delete;
+    pool& operator=(const pool&) = delete;
+
+    void init(size_t block_size, size_t block_count);
+
     // allocates a block of memory from the pool
     // returns: nullptr if failed, else the memory address of the block of memory
     void* alloc();
@@ -38,6 +43,9 @@ public:
 
     // gets the total amount of bytes that can be used by the pool
     size_t get_capacity() const;
+
+    size_t get_block_size() const;
+    size_t get_block_count() const;
 
 private:
     std::byte* memory;

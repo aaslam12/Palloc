@@ -21,8 +21,20 @@ pool::pool()
     memory = nullptr;
 }
 
-pool::pool(size_t block_size, size_t block_count) : free_count(0), block_count(block_count)
+pool::pool(size_t block_size, size_t block_count)
+    : pool()
 {
+    init(block_size, block_count);
+}
+
+void pool::init(size_t block_size, size_t block_count)
+{
+    assert(this->memory == nullptr && "pool likely already initialized correctly.");
+    assert(this->capacity == (size_t)-1 && "pool likely already initialized correctly.");
+    assert(this->free_count == (size_t)-1 && "pool likely already initialized correctly.");
+    assert(this->block_size == (size_t)-1 && "pool likely already initialized correctly.");
+    assert(this->block_count == (size_t)-1 && "pool likely already initialized correctly.");
+
     int page_size = getpagesize();
     if (block_size < sizeof(void*))
     {
@@ -34,6 +46,7 @@ pool::pool(size_t block_size, size_t block_count) : free_count(0), block_count(b
     }
 
     this->block_size = std::bit_ceil(block_size);
+    this->block_count = block_count;
 
     // round up to next page boundary
     size_t total_needed = this->block_size * this->block_count;
@@ -162,6 +175,16 @@ size_t pool::get_capacity() const
 {
     check_asserts();
     return capacity;
+}
+
+size_t pool::get_block_size() const
+{
+    return block_size;
+}
+
+size_t pool::get_block_count() const
+{
+    return block_count;
 }
 
 void pool::check_asserts() const

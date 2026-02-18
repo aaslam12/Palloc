@@ -32,6 +32,12 @@ def main():
         action="store_true",
         help="Disable building and running tests (default for Release)",
     )
+    parser.add_argument(
+        "--stress-test", action="store_true", help="Build and run stress tests"
+    )
+    parser.add_argument(
+        "--static", action="store_true", help="Link libraries statically"
+    )
 
     args = parser.parse_args()
 
@@ -67,6 +73,8 @@ def main():
         f"-DCMAKE_BUILD_TYPE={args.config}",
         "-DCMAKE_EXPORT_COMPILE_COMMANDS=ON",
         f"-DSLABALLOCATOR_BUILD_TESTS={'ON' if build_tests else 'OFF'}",
+        f"-DSLABALLOCATOR_BUILD_STRESS_TESTS={'ON' if args.stress_test else 'OFF'}",
+        f"-DSLABALLOCATOR_STATIC_LINKING={'ON' if args.static else 'OFF'}",
     ]
 
     # Generator selection: Prefer Ninja if available, else let CMake decide
@@ -123,6 +131,38 @@ def main():
             print("Tests failed.")
             # We don't exit here to allow running the app if desired,
             # mirroring the '|| true' behavior of the original script.
+
+    # --- Stress Test Step ---
+    if args.stress_test:
+        print("\n=== Running Stress Tests ===")
+        stress_src_dir = os.path.join(project_root, "stress_tests")
+
+        if os.path.isdir(stress_src_dir):
+            found_tests = False
+            for filename in sorted(os.listdir(stress_src_dir)):
+                if filename.endswith(".cpp"):
+                    found_tests = True
+                    test_name = os.path.splitext(filename)[0]
+                    stress_exe = os.path.join(build_dir, test_name)
+
+                    if platform.system() == "Windows":
+                        stress_exe += ".exe"
+
+                    if os.path.exists(stress_exe):
+                        print(f"--- Running {test_name} ---")
+                        try:
+                            subprocess.check_call([stress_exe])
+                        except subprocess.CalledProcessError:
+                            print(f"!!! FAILED: {test_name}")
+                    else:
+                        print(
+                            f"Warning: Executable for {test_name} not found (build might have failed)."
+                        )
+
+            if not found_tests:
+                print("No .cpp files found in stress_tests/.")
+        else:
+            print("Directory stress_tests/ does not exist.")
 
     # --- Run Step ---
     print("\n=== Running Application ===")
