@@ -113,6 +113,26 @@ private:
         return SIZE_CLASS_CONFIG[index].second;
     }
 
+    static constexpr thread_local_cache& index_to_cache(size_t index)
+    {
+        if (index == 0)
+        {
+            return cache_8B;
+        }
+        else if (index == 1)
+        {
+            return cache_16B;
+        }
+        else if (index == 2)
+        {
+            return cache_32B;
+        }
+        else
+        {
+            return cache_64B;
+        }
+    }
+
     thread_local static thread_local_cache cache_8B;
     thread_local static thread_local_cache cache_16B;
     thread_local static thread_local_cache cache_32B;

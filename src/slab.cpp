@@ -4,6 +4,7 @@
 #include <cstddef>
 #include <cstring>
 #include <iterator>
+#include <strings.h>
 
 namespace AL
 {
@@ -34,7 +35,31 @@ void* slab::alloc(size_t size)
         return nullptr;
     }
 
-    return shared_pools[index].alloc();
+    pool& pool = shared_pools[index];
+
+    if (index < 4)
+    {
+        // hot size classes
+        // should batch
+        thread_local_cache& cache = index_to_cache(index);
+        if (auto elem = cache.try_pop())
+        {
+            // cache hit
+            return elem;
+        }
+        else
+        {
+            // cache miss
+            size_t num_allocated = pool.alloc_batched_internal(cache.object_count / 2, cache.objects.data());
+            cache.current = num_allocated;
+
+            return cache.try_pop();
+        }
+    }
+    else
+    {
+        return pool.alloc();
+    }
 }
 
 void* slab::calloc(size_t size)
@@ -72,7 +97,26 @@ void slab::free(void* ptr, size_t size)
         return;
     }
 
-    shared_pools[index].free(ptr);
+    pool& pool = shared_pools[index];
+    if (index < 4)
+    {
+        // hot size classes
+        // should batch
+        thread_local_cache& cache = index_to_cache(index);
+        if (cache.is_full())
+        {
+            auto num = cache.object_count / 2;
+            pool.free_batched_internal(num, cache.objects.data() + num);
+            cache.current = num;
+        }
+
+        cache.push(ptr);
+    }
+    else
+    {
+        // cache miss
+        shared_pools[index].free(ptr);
+    }
 }
 
 size_t slab::get_pool_count() const
