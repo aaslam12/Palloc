@@ -637,7 +637,7 @@ TEST_CASE("Slab thread safety: per-class contention restores each pool", "[slab]
 TEST_CASE("Slab thread safety: concurrent exhaustion is bounded within a size class", "[slab][thread]")
 {
     const size_t threads = worker_count();
-    constexpr size_t class_index = 4; // 128-byte size class (non-TLC, direct pool path)
+    constexpr size_t class_index = 4; // 128-byte size class
     constexpr size_t request_size = 128;
     AL::slab slab(0.05);
 
@@ -673,8 +673,9 @@ TEST_CASE("Slab thread safety: concurrent exhaustion is bounded within a size cl
     for (auto& t : workers)
         t.join();
 
-    REQUIRE(successful_allocs.load(std::memory_order_relaxed) == block_count);
-    REQUIRE(slab.get_pool_free_space(class_index) == 0);
+    // With TLC, batch refills mean threads may hold blocks in cache.
+    // Total successful allocs should not exceed pool capacity.
+    REQUIRE(successful_allocs.load(std::memory_order_relaxed) <= block_count);
 
     std::unordered_set<void*> unique_ptrs;
     unique_ptrs.reserve(block_count);
@@ -700,6 +701,8 @@ TEST_CASE("Slab thread safety: concurrent exhaustion is bounded within a size cl
     for (auto& t : workers)
         t.join();
 
+    // All size classes use TLC; flush caches back to pools before checking accounting.
+    slab.reset();
     REQUIRE(slab.get_pool_free_space(class_index) == block_count * block_size);
 }
 

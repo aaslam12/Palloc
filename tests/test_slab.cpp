@@ -260,16 +260,16 @@ TEST_CASE("Slab: Basic free", "[slab][free]")
 
     SECTION("Free single allocation increases free space")
     {
-        // Use a non-TLC size class (>= 512 bytes, index >= 4) so free space
-        // is tracked at the pool level rather than staying in the thread-local cache.
+        // All size classes use TLC; free goes to cache first.
+        // Reset flushes caches back so pool-level accounting reflects the free.
         void* ptr = s.alloc(512);
         REQUIRE(ptr != nullptr);
 
-        size_t free_before = s.get_total_free();
         s.free(ptr, 512);
+        s.reset();
         size_t free_after = s.get_total_free();
 
-        REQUIRE(free_after > free_before);
+        REQUIRE(free_after == s.get_total_capacity());
     }
 
     SECTION("Free nullptr is safe")
@@ -486,19 +486,18 @@ TEST_CASE("Slab: Free space accounting", "[slab][stats]")
 
     SECTION("Free increases free space")
     {
-        // Use a non-TLC size class (>= 512 bytes) so the free is reflected
-        // immediately in pool-level free space rather than staying in cache.
+        // All size classes use TLC; free goes to cache, not pool.
+        // Reset flushes caches back so pool-level accounting reflects the free.
         void* ptr = s.alloc(512);
-        size_t before = s.get_total_free();
         s.free(ptr, 512);
-        REQUIRE(s.get_total_free() > before);
+        s.reset();
+        REQUIRE(s.get_total_free() == s.get_total_capacity());
     }
 
     SECTION("Pool-specific free space decreases on alloc")
     {
-        // The 512-byte size class is at index 6 (non-TLC).
-        // TLC-cached classes (indices 0-3: 8/16/32/64 bytes) batch-refill
-        // on the first miss, making single-alloc pool accounting unpredictable.
+        // TLC batch-refills on first miss, so a single alloc drains
+        // a batch from the pool. Verify the pool decreased.
         size_t before = s.get_pool_free_space(6);
         s.alloc(512);
         REQUIRE(s.get_pool_free_space(6) < before);
@@ -521,7 +520,7 @@ TEST_CASE("Slab: TLC cached class alloc returns valid memory", "[slab][tlc]")
 
     SECTION("All cached size classes return writable memory")
     {
-        size_t cached_sizes[] = {8, 16, 32, 64};
+        size_t cached_sizes[] = {8, 16, 32, 64, 128, 256, 512, 1024, 2048, 4096};
         for (size_t size : cached_sizes)
         {
             char* ptr = static_cast<char*>(s.alloc(size));

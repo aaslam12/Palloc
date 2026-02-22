@@ -61,6 +61,9 @@ public:
     size_t get_block_count() const;
     void clear();
 
+    std::byte* get_memory_start() const { return memory; }
+    std::byte* get_memory_end() const { return memory + capacity; }
+
 private:
     std::byte* memory; // pointer to the first byte of our mapped memory
     size_t capacity;

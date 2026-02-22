@@ -16,6 +16,12 @@ if(NOT CMAKE_BUILD_TYPE)
   set(CMAKE_BUILD_TYPE "Release" CACHE STRING "Choose the type of build." FORCE)
 endif()
 
+# Explicitly set Release optimization to -O3
+if(CMAKE_BUILD_TYPE STREQUAL "Release")
+  set(CMAKE_CXX_FLAGS_RELEASE "-O3 -DNDEBUG" CACHE STRING "Release CXX flags")
+  set(CMAKE_C_FLAGS_RELEASE "-O3 -DNDEBUG" CACHE STRING "Release C flags")
+endif()
+
 # Note: cxx_std_20 has been set somewhere below as well
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_EXTENSIONS OFF)
@@ -118,11 +124,24 @@ endif()
 # Stress Tests
 # -----------------------
 if(PALLOC_BUILD_STRESS_TESTS)
+  find_library(JEMALLOC_LIB jemalloc)
+  find_path(JEMALLOC_INCLUDE jemalloc/jemalloc.h)
+
   file(GLOB STRESS_SRCS "stress_tests/*.cpp")
   foreach(stress_src ${STRESS_SRCS})
     get_filename_component(test_name ${stress_src} NAME_WE)
     add_executable(${test_name} ${stress_src})
-    target_link_libraries(${test_name} PRIVATE core)
+    if(test_name STREQUAL "jemalloc_vs_palloc" OR test_name STREQUAL "dynamic_slab_vs_jemalloc")
+      if(JEMALLOC_LIB AND JEMALLOC_INCLUDE)
+        target_include_directories(${test_name} PRIVATE ${JEMALLOC_INCLUDE})
+        target_link_libraries(${test_name} PRIVATE core ${JEMALLOC_LIB})
+      else()
+        message(WARNING "jemalloc not found — skipping ${test_name} target")
+        continue()
+      endif()
+    else()
+      target_link_libraries(${test_name} PRIVATE core)
+    endif()
     if(PALLOC_STATIC_LINKING)
       target_link_options(${test_name} PRIVATE -static -static-libgcc -static-libstdc++)
     endif()

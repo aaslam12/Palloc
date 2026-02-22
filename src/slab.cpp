@@ -12,7 +12,7 @@ namespace AL
 // to satisfy the linker
 thread_local std::array<slab::cache_entry, slab::MAX_CACHED_SLABS> slab::caches = {};
 
-slab::slab(double scale) : epoch(0)
+slab::slab(size_t scale) : epoch(0)
 {
     for (size_t i = 0; i < shared_pools.size(); i++)
     {
@@ -71,7 +71,7 @@ void* slab::alloc(size_t size)
         else
         {
             // cache miss
-            size_t num_allocated = pool.alloc_batched_internal(cache.object_count / 2, cache.objects.data());
+            size_t num_allocated = pool.alloc_batched_internal(cache.batch_size, cache.objects.data());
             cache.current = num_allocated;
 
             return cache.try_pop();
@@ -135,9 +135,8 @@ void slab::free(void* ptr, size_t size)
 
         if (cache.is_full())
         {
-            auto num = cache.object_count / 2;
-            pool.free_batched_internal(num, cache.objects.data() + num);
-            cache.current = num;
+            pool.free_batched_internal(cache.batch_size, cache.objects.data() + (cache.current - cache.batch_size));
+            cache.current -= cache.batch_size;
         }
 
         cache.push(ptr);
@@ -184,6 +183,15 @@ size_t slab::get_pool_free_space(size_t index) const
     if (index >= NUM_SIZE_CLASSES)
         return 0;
     return shared_pools[index].get_free_space();
+}
+
+bool slab::owns(void* ptr) const
+{
+    for (const auto& pool : shared_pools)
+        if (pool.owns(ptr))
+            return true;
+
+    return false;
 }
 
 } // namespace AL

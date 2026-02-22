@@ -198,16 +198,13 @@ void pool::clear()
 
 bool pool::owns(void* ptr) const
 {
-    if (ptr == nullptr)
-        return false;
-
     std::byte* byte_ptr = static_cast<std::byte*>(ptr);
 
-    if (byte_ptr < memory || byte_ptr >= (memory + block_size * block_count))
+    if (byte_ptr < memory || byte_ptr >= (memory + capacity))
         return false;
 
     size_t offset = byte_ptr - memory;
-    return (offset % block_size) == 0;
+    return (offset & (block_size - 1)) == 0;
 }
 
 void pool::free(void* ptr)
