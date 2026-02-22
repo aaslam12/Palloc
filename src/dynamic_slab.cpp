@@ -1,4 +1,5 @@
 #include "dynamic_slab.h"
+#include <cstddef>
 #include <cstring>
 #include <memory>
 #include <sys/mman.h>
@@ -25,7 +26,7 @@ dynamic_slab::slab_node* dynamic_slab::create_node(slab_node* next_ptr)
     }
 }
 
-dynamic_slab::dynamic_slab(double s) : scale(s), head(nullptr), node_count(0)
+dynamic_slab::dynamic_slab(size_t s) : scale(s), head(nullptr), node_count(0)
 {
     slab_node* node = create_node(nullptr);
     if (node)

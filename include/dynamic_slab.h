@@ -49,7 +49,7 @@ private:
     // allocate and construct a new slab_node via mmap
     slab_node* create_node(slab_node* next_ptr);
 
-    double scale;
+    size_t scale;
     std::atomic<slab_node*> head;
     std::atomic<size_t> node_count;
     std::mutex grow_mutex; // only held when adding a new slab
