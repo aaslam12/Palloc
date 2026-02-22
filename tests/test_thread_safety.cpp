@@ -583,8 +583,8 @@ TEST_CASE("Slab thread safety: concurrent mixed-size alloc/free remains stable",
         t.join();
 
     REQUIRE(null_allocations.load(std::memory_order_relaxed) == 0);
-    // TLC-cached sizes (≤64) hold pointers in thread-local caches, not pool free lists.
-    // Reset reinitializes all pool free lists and bumps epoch to invalidate TLC entries.
+    // All size classes use TLC. Reset flushes caches back to pools so
+    // pool-level free accounting reflects all freed blocks.
     slab.reset();
     REQUIRE(slab.get_total_free() == initial_total_free);
 }
@@ -1772,9 +1772,9 @@ TEST_CASE("Slab thread safety: TLC epoch after reset then realloc", "[slab][thre
 TEST_CASE("Slab thread safety: concurrent calloc on TLC-cached sizes", "[slab][thread]")
 {
     const size_t threads = worker_count();
-    const size_t iterations = 3000;
-    // Only use TLC-cached sizes (8, 16, 32, 64)
-    constexpr std::array<size_t, 4> cached_sizes = {8, 16, 32, 64};
+    const size_t iterations = 1000;
+    // All size classes are TLC-cached
+    constexpr std::array<size_t, 10> cached_sizes = {8, 16, 32, 64, 128, 256, 512, 1024, 2048, 4096};
     AL::slab slab(4.0);
 
     std::atomic<bool> start{false};

@@ -81,13 +81,13 @@ void* arena::alloc(size_t length)
     size_t current;
     while (true)
     {
-        current = used.load(std::memory_order_acquire);
+        current = used.load(std::memory_order::relaxed);
 
         // if we do not have enough space left in the page
         if (length > (capacity - current))
             return nullptr;
 
-        if (used.compare_exchange_weak(current, current + length, std::memory_order_relaxed, std::memory_order_relaxed))
+        if (used.compare_exchange_weak(current, current + length, std::memory_order_release, std::memory_order_relaxed))
             return memory + current;
     }
 }

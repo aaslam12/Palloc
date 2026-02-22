@@ -726,7 +726,7 @@ TEST_CASE("Slab: Calloc on TLC-cached sizes zeros memory", "[slab][tlc][calloc]"
 
     SECTION("Multiple callocs on different cached sizes")
     {
-        for (size_t size : {8, 16, 32, 64})
+        for (size_t size : {8, 16, 32, 64, 128, 256, 512, 1024, 2048, 4096})
         {
             char* ptr = static_cast<char*>(s.calloc(size));
             REQUIRE(ptr != nullptr);
