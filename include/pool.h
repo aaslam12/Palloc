@@ -30,12 +30,14 @@ public:
     void init(size_t block_size, size_t block_count);
 
     // allocates a block of memory from the pool
+    // returns properly aligned memory
     // thread-safe
     // returns: nullptr if failed, else the memory address of the block of memory
     [[nodiscard]] void* alloc();
 
     // allocates a block of memory from the pool
     // also zeroes out the memory returned
+    // returns properly aligned memory
     // thread-safe
     // returns: nullptr if failed, else the memory address of the block of memory
     [[nodiscard]] void* calloc();

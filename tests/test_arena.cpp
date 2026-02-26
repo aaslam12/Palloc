@@ -75,14 +75,20 @@ TEST_CASE("Arena: Basic allocations", "[arena][alloc]")
         REQUIRE(p1 != p3);
     }
 
-    SECTION("Sequential allocations are contiguous")
+    SECTION("Sequential allocations are non-overlapping and aligned")
     {
+        constexpr size_t alignment = alignof(std::max_align_t);
         char* p1 = static_cast<char*>(a.alloc(100));
         char* p2 = static_cast<char*>(a.alloc(100));
         char* p3 = static_cast<char*>(a.alloc(100));
 
-        REQUIRE(p2 == p1 + 100);
-        REQUIRE(p3 == p2 + 100);
+        REQUIRE(reinterpret_cast<uintptr_t>(p1) % alignment == 0);
+        REQUIRE(reinterpret_cast<uintptr_t>(p2) % alignment == 0);
+        REQUIRE(reinterpret_cast<uintptr_t>(p3) % alignment == 0);
+
+        // Allocations must not overlap
+        REQUIRE(p2 >= p1 + 100);
+        REQUIRE(p3 >= p2 + 100);
     }
 }
 
@@ -183,7 +189,7 @@ TEST_CASE("Arena: Reset functionality", "[arena][reset]")
         void* p2 = a.alloc(200);
         REQUIRE(p1 != nullptr);
         REQUIRE(p2 != nullptr);
-        REQUIRE(a.get_used() == 300);
+        REQUIRE(a.get_used() >= 300); // at least the sum of requested bytes, plus any alignment padding
 
         int result = a.reset();
         REQUIRE(result == 0);

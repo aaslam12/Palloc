@@ -24,9 +24,11 @@ public:
     dynamic_slab& operator=(dynamic_slab&&) = delete;
 
     // returns: nullptr if failed, else memory address
+    // returns memory is properly aligned
     [[nodiscard]] void* palloc(size_t size);
 
     // returns: nullptr if failed, else memory address (zeroed)
+    // returns memory is properly aligned
     [[nodiscard]] void* calloc(size_t size);
 
     // free pointer allocated by this dynamic_slab

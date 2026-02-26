@@ -65,9 +65,11 @@ public:
     slab& operator=(slab&&) noexcept = delete;
 
     // returns: nullptr if failed, else the memory address of the block of memory
+    // returns memory is properly aligned
     [[nodiscard]] void* alloc(size_t size);
 
     // returns: nullptr if failed, else the memory address of the block of memory
+    // returns memory is properly aligned
     [[nodiscard]] void* calloc(size_t size);
 
     // NOT thread safe

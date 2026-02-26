@@ -78,17 +78,23 @@ void* arena::alloc(size_t length)
     if (length == 0 || memory == nullptr)
         return nullptr;
 
+    constexpr size_t alignment = alignof(std::max_align_t);
+
     size_t current;
+    size_t aligned;
     while (true)
     {
         current = used.load(std::memory_order::relaxed);
 
-        // if we do not have enough space left in the page
-        if (length > (capacity - current))
+        // align current offset up to the required alignment boundary
+        aligned = (current + alignment - 1) & ~(alignment - 1);
+
+        // if we do not have enough space left in the arena
+        if (length > (capacity - aligned))
             return nullptr;
 
-        if (used.compare_exchange_weak(current, current + length, std::memory_order_release, std::memory_order_relaxed))
-            return memory + current;
+        if (used.compare_exchange_weak(current, aligned + length, std::memory_order_release, std::memory_order_relaxed))
+            return memory + aligned;
     }
 }
 

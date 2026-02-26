@@ -1,6 +1,6 @@
 #include "arena.h"
 #include "pool.h"
-#include <stdio.h>
+#include <cstdio>
 
 int main(void)
 {

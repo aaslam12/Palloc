@@ -16,11 +16,13 @@ public:
     arena& operator=(arena&&) noexcept;
 
     // allocates a block of memory of specified length from the arena
+    // returns properly aligned memory
     // returns: nullptr if failed, else the memory address of the block of memory
     [[nodiscard]] void* alloc(size_t length);
 
     // allocates a block of memory of specified length from the arena
     // also zeroes out the memory returned
+    // returns properly aligned memory
     // returns: nullptr if failed, else the memory address of the block of memory
     [[nodiscard]] void* calloc(size_t length);
 
