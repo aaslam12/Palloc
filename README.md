@@ -16,6 +16,8 @@ A high-performance, thread-safe memory allocator library written in C++20. Imple
 - [Benchmarks](#benchmarks)
   - [Single-threaded by size](#single-threaded-allocfree-by-size)
   - [Linear allocation](#linear-allocation-alloc-only-no-free)
+  - [Fixed-size alloc+free](#fixed-size-allocfree-single-thread)
+  - [Batch alloc-then-free](#batch-alloc-then-free)
   - [Multi-threaded](#multi-threaded-8-threads)
   - [Calloc](#calloc-zero-initialized)
   - [Known limitations](#known-limitations)
@@ -44,7 +46,7 @@ All allocators:
 
 ### Requirements
 
-- Unix Operating System (library uses `mmap` `munmap`)
+- POSIX compliant Operating System (library uses `mmap` `munmap`)
 - C++20 compiler
 - CMake 3.10+
 - Catch2 v3
@@ -140,48 +142,72 @@ Benchmarked on Linux (12-core Intel i5 11th gen), compiled with GCC `-O3`. All n
 
 | Size | Slab (TLC) | Dynamic Slab | jemalloc | malloc |
 |------|-----------|-------------|----------|--------|
-| 8B | **3.2** | 4.7 | 5.7 | 2.3 |
-| 16B | **3.3** | 5.4 | 5.6 | 2.3 |
-| 32B | **3.3** | 6.0 | 5.7 | 2.3 |
-| 64B | **3.3** | 6.7 | 5.7 | 2.3 |
-| 128B | **3.4** | 7.2 | 5.7 | 2.4 |
-| 256B | **3.7** | 7.7 | 5.8 | 2.5 |
-| 512B | **3.7** | 8.3 | 6.0 | 2.7 |
-| 1024B | **4.0** | 9.0 | 6.2 | 3.2 |
-| 2048B | **3.7** | 9.1 | 6.8 | 4.1 |
-| 4096B | **3.7** | 9.7 | 7.7 | 5.7 |
+| 8B | **2.8** | 4.4 | 5.7 | 2.3 |
+| 16B | **2.9** | 5.5 | 6.0 | 2.4 |
+| 32B | **3.2** | 6.3 | 6.1 | 2.4 |
+| 64B | **3.4** | 6.7 | 6.2 | 2.4 |
+| 128B | **3.6** | 7.4 | 6.2 | 2.6 |
+| 256B | **3.6** | 8.1 | 6.3 | 2.6 |
+| 512B | **3.6** | 8.5 | 6.3 | 2.9 |
+| 1024B | **3.7** | 9.1 | 6.5 | 3.3 |
+| 2048B | **3.6** | 9.6 | 7.0 | 4.3 |
+| 4096B | **3.5** | 10.0 | 8.0 | 5.8 |
 
-Slab's TLC gives it a consistent ~1.7x advantage over jemalloc across all sizes. malloc is fastest at small sizes since glibc's fastbins are highly optimized for ST alloc+immediate-free, but Slab closes the gap at larger sizes.
+Slab's TLC gives it a consistent ~1.7–2x advantage over jemalloc across all sizes. malloc is fastest at small sizes since glibc's fastbins are highly optimized for ST alloc+immediate-free, but Slab closes the gap at larger sizes.
 
 ### Linear allocation (alloc only, no free)
 
 | Allocator | ns/op | MOps/s |
 |-----------|-------|--------|
-| malloc | 6.3 | 158 |
-| Pool | 8.2 | 121 |
-| Arena | 8.9 | 113 |
-| jemalloc | 11.7 | 86 |
+| malloc | 6.3 | 157.9 |
+| Pool | 8.3 | 120.5 |
+| Arena | 8.9 | 112.1 |
+| jemalloc | 11.7 | 85.7 |
 
 Arena and Pool are competitive with malloc for pure allocation throughput. jemalloc's metadata overhead makes it slowest here.
+
+### Fixed-size alloc+free (single-thread)
+
+Single-threaded alloc+free pairs at 64B, 1M cycles.
+
+| Allocator | ns/op | MOps/s |
+|-----------|-------|--------|
+| malloc | 2.4 | 416.2 |
+| Slab (TLC) | **3.3** | 303.5 |
+| jemalloc | 5.7 | 174.1 |
+| Pool | 7.7 | 129.2 |
+
+### Batch alloc-then-free
+
+256 objects allocated then freed together, 200K cycles, 64B.
+
+| Allocator | ns/op | MOps/s |
+|-----------|-------|--------|
+| malloc | 6.0 | 167.7 |
+| Slab (TLC) | **6.7** | 150.1 |
+| jemalloc | 9.3 | 107.5 |
+| Dynamic Slab | 10.1 | 99.1 |
+
+Slab's TLC handles delayed-free patterns competitively with malloc. Dynamic Slab performs comparably here as its O(n) free-list traversal is masked by the batch size.
 
 ### Multi-threaded (8 threads)
 
 | Test | Slab (TLC) | Dynamic Slab | jemalloc | malloc |
 |------|-----------|-------------|----------|--------|
-| Single size (32B) | **6.9** | 9.4 | 9.2 | 7.3 |
-| Mixed sizes | **6.5** | 9.5 | 9.0 | 6.5 |
-| Batch hold (500 objects) | 25.0 | 228 | **2.5** | 1.6 |
+| Single size (32B) | 6.6 | 8.8 | 8.5 | **6.5** |
+| Mixed sizes | 7.3 | 10.6 | 9.6 | **7.1** |
+| Batch hold (500 objects) | 24.1 | 211.1 | **2.5** | 1.6 |
 
-Slab wins the contention-heavy single-size and mixed-size MT tests. The batch-hold pattern exposes Slab's weakness: TLC entries get flushed when holding many objects, falling back to the mutex-protected pool. Dynamic Slab's O(n) free-list walk makes it ~90x slower than jemalloc on this pattern.
+malloc and Slab are neck-and-neck on the contention-heavy single-size and mixed-size MT tests; Slab's TLC avoids lock contention while malloc's per-thread fastbins achieve similar throughput. The batch-hold pattern exposes Slab's weakness: TLC entries get flushed when holding many objects, falling back to the mutex-protected pool. Dynamic Slab's O(n) free-list walk makes it ~84x slower than jemalloc on this pattern.
 
 ### Calloc (zero-initialized)
 
 | Size | Slab | jemalloc | calloc |
 |------|------|----------|--------|
-| 32B | 4.5 | 6.3 | 4.4 |
-| 256B | 5.0 | 6.8 | 5.5 |
-| 1024B | 6.5 | 9.2 | 7.4 |
-| 4096B | 13.7 | 18.4 | 17.5 |
+| 32B | 4.2 | 6.3 | 4.1 |
+| 256B | 5.0 | 7.3 | 5.2 |
+| 1024B | 6.5 | 9.4 | 7.6 |
+| 4096B | 13.8 | 18.5 | 17.3 |
 
 Slab's calloc is competitive with glibc's calloc and consistently faster than jemalloc.
 
