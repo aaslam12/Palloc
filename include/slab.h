@@ -107,16 +107,16 @@ private:
     // compile-time size class configuration
     // <bytes class, number of blocks in class>
     static constexpr std::array<std::pair<size_t, size_t>, 10> SIZE_CLASS_CONFIG = {
-        {std::make_pair(8, 512),
-         std::make_pair(16, 512),
-         std::make_pair(32, 256),
-         std::make_pair(64, 256),
-         std::make_pair(128, 128),
-         std::make_pair(256, 128),
-         std::make_pair(512, 64),
-         std::make_pair(1024, 64),
-         std::make_pair(2048, 32),
-         std::make_pair(4096, 32)}
+        {{8, 512},
+         {16, 512},
+         {32, 256},
+         {64, 256},
+         {128, 128},
+         {256, 128},
+         {512, 64},
+         {1024, 64},
+         {2048, 32},
+         {4096, 32}}
     };
     static_assert(SIZE_CLASS_CONFIG.size() > 0, "Atleast one entry in SIZE_CLASS_CONFIG required.");
 

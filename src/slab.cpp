@@ -166,8 +166,8 @@ size_t slab::get_total_capacity() const
 size_t slab::get_total_free() const
 {
     size_t total = 0;
-    for (size_t i = 0; i < NUM_SIZE_CLASSES; ++i)
-        total += shared_pools[i].get_free_space();
+    for (const auto& pool : shared_pools)
+        total += pool.get_free_space();
     return total;
 }
 
