@@ -3,12 +3,13 @@
 #include <atomic>
 #include <cstddef>
 #include <mutex>
+#include <new>
 
 namespace AL
 {
 class slab;
 
-class alignas(64) pool
+class alignas(std::hardware_destructive_interference_size) pool
 {
     struct free_node
     {

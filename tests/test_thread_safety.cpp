@@ -549,6 +549,9 @@ TEST_CASE("Slab thread safety: concurrent mixed-size alloc/free remains stable",
         1, 8, 9, 15, 16, 17, 31, 32, 33, 63, 64, 65, 127, 128, 129, 255, 256, 257, 511, 512, 513, 1023, 1024, 1025, 2047, 2048, 2049, 4096,
     };
 
+    // Scale must keep all pools above the TLC high-water mark.
+    // With batch_size[8B]=64 and up to 16 threads: 16*64=1024 blocks needed.
+    // Default 8B pool = 512 blocks, so scale >= 3. Use 4 for headroom.
     AL::slab slab(4.0);
     const size_t initial_total_free = slab.get_total_free();
     std::atomic<bool> start{false};
@@ -713,6 +716,7 @@ TEST_CASE("Slab thread safety: concurrent calloc returns zeroed size-class block
     constexpr std::array<size_t, 10> request_sizes = {
         7, 9, 17, 33, 65, 129, 257, 513, 1025, 2049,
     };
+    // Same constraint as mixed-size test: scale >= 3 for 16 threads * batch_size[8B]=64.
     AL::slab slab(3.0);
 
     std::atomic<bool> start{false};

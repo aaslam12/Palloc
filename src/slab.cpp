@@ -11,8 +11,9 @@ namespace AL
 {
 // to satisfy the linker
 thread_local std::array<slab::cache_entry, slab::MAX_CACHED_SLABS> slab::caches = {};
+std::atomic<size_t> slab::next_slab_id{0};
 
-slab::slab(size_t scale) : epoch(0)
+slab::slab(size_t scale) : epoch(0), slab_id(next_slab_id.fetch_add(1, std::memory_order_relaxed))
 {
     for (size_t i = 0; i < shared_pools.size(); i++)
     {
@@ -25,12 +26,24 @@ slab::slab(size_t scale) : epoch(0)
 
 slab::~slab()
 {
-    for (auto& entry : caches)
+    // Check preferred slot first (O(1) fast path)
+    const size_t preferred = slab_id % MAX_CACHED_SLABS;
+    if (caches[preferred].owner == this)
     {
-        if (entry.owner == this)
+        caches[preferred].invalidate_all();
+        caches[preferred].owner = nullptr;
+        return;
+    }
+    // Fallback scan: entry may have been displaced to another slot
+    for (size_t i = 0; i < MAX_CACHED_SLABS; ++i)
+    {
+        if (i == preferred)
+            continue;
+        if (caches[i].owner == this)
         {
-            entry.invalidate_all();
-            entry.owner = nullptr;
+            caches[i].invalidate_all();
+            caches[i].owner = nullptr;
+            return;
         }
     }
 }

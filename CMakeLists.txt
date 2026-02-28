@@ -30,7 +30,7 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 # -----------------------
 # Global warnings and includes
 # -----------------------
-add_compile_options(-Wall -Wextra -Wpedantic)
+add_compile_options(-Wall -Wextra -Wpedantic -Wno-interference-size)
 
 # Add color to g++ output
 set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -fdiagnostics-color=always -Wno-unused-result")

@@ -3,6 +3,7 @@
 #include "pool.h"
 #include <array>
 #include <atomic>
+#include <bit>
 #include <cassert>
 #include <cstddef>
 #include <iterator>
@@ -90,10 +91,12 @@ public:
 
     static constexpr size_t size_to_index(size_t size)
     {
-        for (size_t i = 0; i < NUM_SIZE_CLASSES; ++i)
-            if (size <= SIZE_CLASS_CONFIG[i].first)
-                return i;
-        return static_cast<size_t>(-1);
+        if (size == 0 || size > SIZE_CLASS_CONFIG[NUM_SIZE_CLASSES - 1].first)
+            return static_cast<size_t>(-1);
+        // clamp to minimum block size, round up to next power of 2, then derive index via bit width
+        // e.g. size=9 → bit_ceil(16)=16 → bit_width(16)-4=1 (16B class)
+        size_t s = size < SIZE_CLASS_CONFIG[0].first ? SIZE_CLASS_CONFIG[0].first : size;
+        return std::bit_width(std::bit_ceil(s)) - std::bit_width(SIZE_CLASS_CONFIG[0].first);
     }
 
     static constexpr size_t index_to_size_class(size_t index)
@@ -183,37 +186,39 @@ private:
     {
         assert(MAX_CACHED_SLABS != 0 && "Cannot get cached slab. Number of cached slabs is 0");
 
-        size_t current = 0;
-        size_t empty_cache_entry_index = -1;
-        for (auto& cache : caches)
-        {
-            if (this == cache.owner)
-            {
-                // found a cache entry belonging to the thread
-                return &cache;
-            }
-            else if (cache.owner == nullptr)
-            {
-                // found empty entry
-                empty_cache_entry_index = current;
-            }
+        // O(1) fast path: check the preferred hash slot first
+        const size_t preferred = slab_id % MAX_CACHED_SLABS;
+        if (caches[preferred].owner == this)
+            return &caches[preferred];
 
-            current++;
+        // Scan for an existing entry for this slab, or the first empty slot.
+        // Slabs with colliding hash IDs will land in different slots when space is available.
+        size_t empty_slot = caches[preferred].owner == nullptr ? preferred : (size_t)-1;
+        for (size_t i = 0; i < MAX_CACHED_SLABS; ++i)
+        {
+            if (i == preferred)
+                continue;
+            if (caches[i].owner == this)
+                return &caches[i];
+            if (caches[i].owner == nullptr && empty_slot == (size_t)-1)
+                empty_slot = i;
         }
 
-        // none of the cache entries belong to this thread but we have an empty slot.
-        if (empty_cache_entry_index != (size_t)-1)
+        // Claim an empty slot (prefer the hash slot to keep affinity for next time)
+        if (empty_slot != (size_t)-1)
         {
-            cache_entry& entry = caches[empty_cache_entry_index];
+            cache_entry& entry = caches[empty_slot];
             entry.owner = this;
             entry.epoch = epoch.load(std::memory_order_acquire);
             init_cache_batch_sizes(entry);
             return &entry;
         }
 
-        // none of the cache entries belong to this slab and all entries are full
-        // we need to evict the last entry
-        cache_entry& entry = caches[caches.max_size() - 1];
+        // All slots occupied by other slabs.
+        // Evict the last slot (not the preferred one) so that slabs whose preferred
+        // slots are 0..MAX_CACHED_SLABS-2 remain stable across round-robin cycling.
+        // This mirrors LRU-ish eviction: the last slot acts as the "victim" slot.
+        cache_entry& entry = caches[MAX_CACHED_SLABS - 1];
         entry.flush();
         entry.owner = this;
         entry.epoch = epoch.load(std::memory_order_acquire);
@@ -229,6 +234,9 @@ private:
 
     std::atomic<size_t> epoch;
     std::array<pool, NUM_SIZE_CLASSES> shared_pools;
+
+    static std::atomic<size_t> next_slab_id;
+    size_t slab_id;
 };
 
 } // namespace AL
