@@ -153,7 +153,13 @@ Benchmarked on Linux (12-core Intel i5 11th gen), compiled with GCC `-O3`. All n
 | 2048B | **2.6** | 8.4 | 6.9 | 4.2 |
 | 4096B | **2.6** | 9.0 | 7.7 | 5.9 |
 
-Slab's TLC gives it a consistent ~2x advantage over jemalloc across all sizes. malloc is fastest at small sizes since glibc's fastbins are highly optimized for ST alloc+immediate-free, but Slab matches it at larger sizes.
+Slab's TLC gives it a ~2x advantage over jemalloc here. Two structural reasons explain the gap — both tied to the benchmark conditions:
+
+1. **Caller-supplied size.** `slab::free(ptr, size)` requires the caller to pass the size. This lets `size_to_index()` resolve the pool in a single `bit_width` instruction, with no pointer provenance lookup. jemalloc's `free(ptr)` must walk a radix tree keyed on address ranges to find the owning arena and size class — that's 2–3 cache misses on a cold path. The 2x gap is largely this lookup cost.
+
+2. **Simpler TLC.** Slab's thread-local cache has no GC watermarks, no stats counters, and no background-thread coordination. Every alloc/free in the hot path is an array index increment/decrement on an already-hot cache line.
+
+> **These conditions don't always hold in practice.** The 2x figure applies when: (a) the caller tracks sizes, (b) objects are short-lived so TLC entries stay L1-hot between alloc and free, and (c) threads don't hold more than ~128 live objects simultaneously. Multi-threaded workloads that hold many live objects degrade significantly (see batch-hold row below). For general-purpose heap replacement, jemalloc is a better fit.
 
 ### Linear allocation (alloc only, no free)
 
@@ -213,7 +219,8 @@ Slab's calloc is competitive with glibc's calloc and consistently faster than je
 
 ### Known limitations
 
-- **Batch-hold pattern**: When threads hold many allocations before freeing, Slab's TLC overflows and falls back to mutex-protected pool operations
-- **Dynamic Slab free()**: O(n) slab-node traversal to find the owning slab. jemalloc uses a radix tree for O(1) pointer-to-arena lookup
-- **malloc advantage at small sizes**: glibc's per-thread fastbins are extremely optimized for the alloc→immediate-free pattern in single-threaded code
+- **`free` requires the size.** `slab::free(ptr, size)` requires the caller to pass the allocation size. This is the primary source of the performance advantage over jemalloc — but it means Slab cannot be a drop-in heap replacement. It fits best in contexts where objects have a known, fixed type/size (object pools, per-request buffers, typed containers).
+- **Batch-hold pattern**: When threads hold more than ~128 live objects simultaneously, Slab's TLC overflows and falls back to mutex-protected pool operations, causing significant throughput degradation under high concurrency.
+- **Dynamic Slab free()**: O(n) slab-node traversal to find the owning slab on every `free()`. jemalloc uses a radix tree for O(1) pointer-to-arena lookup.
+- **malloc advantage at small sizes**: glibc's per-thread fastbins are extremely optimized for the alloc→immediate-free pattern in single-threaded code.
 
