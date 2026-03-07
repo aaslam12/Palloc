@@ -34,7 +34,7 @@ add_compile_options(-Wall -Wextra -Wpedantic -Wno-interference-size)
 
 # Add color to g++ output
 set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -fdiagnostics-color=always -Wno-unused-result")
-include_directories(${CMAKE_SOURCE_DIR}/include)
+include_directories(${CMAKE_CURRENT_SOURCE_DIR}/include)
 
 if(PALLOC_USE_CLANG_TIDY)
   find_program(CLANG_TIDY_EXE NAMES "clang-tidy")
@@ -49,12 +49,12 @@ endif()
 # Sources
 # -----------------------
 file(GLOB_RECURSE ALL_SRC CONFIGURE_DEPENDS
-  "${CMAKE_SOURCE_DIR}/src/*.cpp"
-  "${CMAKE_SOURCE_DIR}/src/*.c"
+  "${CMAKE_CURRENT_SOURCE_DIR}/src/*.cpp"
+  "${CMAKE_CURRENT_SOURCE_DIR}/src/*.c"
 )
 
 # exclude main.cpp from core library if present
-set(MAIN_CPP "${CMAKE_SOURCE_DIR}/src/main.cpp")
+set(MAIN_CPP "${CMAKE_CURRENT_SOURCE_DIR}/src/main.cpp")
 list(FILTER ALL_SRC EXCLUDE REGEX ".*/main.cpp$")
 
 # -----------------------
@@ -63,7 +63,7 @@ list(FILTER ALL_SRC EXCLUDE REGEX ".*/main.cpp$")
 add_library(palloc STATIC ${ALL_SRC})
 target_include_directories(palloc
   PUBLIC
-    $<BUILD_INTERFACE:${CMAKE_SOURCE_DIR}/include>
+    $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
     $<INSTALL_INTERFACE:include>
 )
 
@@ -108,7 +108,7 @@ include(CTest)
 if(PALLOC_BUILD_TESTS AND NOT CMAKE_BUILD_TYPE STREQUAL "Release")
   find_package(Catch2 3 REQUIRED)
 
-  file(GLOB_RECURSE TEST_SRCS CONFIGURE_DEPENDS "${CMAKE_SOURCE_DIR}/tests/*.cpp")
+  file(GLOB_RECURSE TEST_SRCS CONFIGURE_DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/tests/*.cpp")
   if(TEST_SRCS)
     add_executable(tests ${TEST_SRCS})
     target_link_libraries(tests PRIVATE palloc Catch2::Catch2WithMain)
@@ -146,21 +146,6 @@ if(PALLOC_BUILD_STRESS_TESTS)
       target_link_options(${test_name} PRIVATE -static -static-libgcc -static-libstdc++)
     endif()
   endforeach()
-endif()
-
-# -----------------------
-# Format target
-# -----------------------
-find_program(CLANG_FORMAT_EXE NAMES clang-format clang-format-14)
-if(CLANG_FORMAT_EXE)
-  file(GLOB_RECURSE FORMAT_FILES CONFIGURE_DEPENDS
-    "${CMAKE_SOURCE_DIR}/src/*.c" "${CMAKE_SOURCE_DIR}/src/*.cpp"
-    "${CMAKE_SOURCE_DIR}/include/*.h" "${CMAKE_SOURCE_DIR}/include/*.hpp"
-  )
-  add_custom_target(format
-      COMMAND ${CLANG_FORMAT_EXE} -i ${FORMAT_FILES}
-      COMMENT "Running clang-format on sources"
-  )
 endif()
 
 # -----------------------
