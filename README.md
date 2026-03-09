@@ -13,6 +13,15 @@ A high-performance, thread-safe memory allocator library written in C++20. Imple
   - [Running Tests](#running-tests)
   - [Sanitizers](#sanitizers)
   - [Using as a Library](#using-as-a-library)
+- [Stress Tests](#stress-tests)
+  - [Pool allocator](#pool-allocator)
+  - [Slab allocator](#slab-allocator)
+  - [Slab TLC](#slab-tlc-thread-local-cache)
+  - [Arena allocator](#arena-allocator)
+  - [Pool vs malloc](#pool-vs-malloc-single-thread)
+  - [Slab vs malloc](#slab-vs-malloc-single-thread)
+  - [Arena vs malloc](#arena-vs-malloc-single-thread)
+  - [Multi-threaded](#multi-threaded-12-threads)
 - [Benchmarks](#benchmarks)
   - [Single-threaded by size](#single-threaded-allocfree-by-size)
   - [Linear allocation](#linear-allocation-alloc-only-no-free)
@@ -134,7 +143,88 @@ If installed system-wide, the `CMAKE_PREFIX_PATH` hint is not needed.
 
 ---
 
-## Benchmarks
+## Stress Tests
+
+All stress tests are in `stress_tests/` and run in **Release mode** only (`-O3`). Run with:
+
+```bash
+python build.py --config Release --stress-test
+```
+
+Results on Linux (12-core Intel i5 11th gen), compiled with GCC `-O3`.
+
+### Pool allocator
+
+| Test | Operations | Time | Throughput |
+|------|-----------|------|-----------|
+| Partial pool cycles (1K cycles, 50K allocs/cycle) | 100M alloc+free | 1.12 s | **89.5M ops/s** |
+| Full pool exhaustion cycles (1K cycles, 1M block pool) | 2B alloc+free | 25.5 s | **78.4M ops/s** |
+
+### Slab allocator
+
+| Test | Operations | Time | Throughput |
+|------|-----------|------|-----------|
+| Mixed sizes (1M cycles, 32 allocs/cycle: 32/64/128/256B) | 64M alloc+free | 0.45 s | **141M ops/s** |
+| Rapid single-size (10M cycles, 64B) | 20M alloc+free | 0.12 s | **167M ops/s** |
+
+### Slab TLC (Thread-Local Cache)
+
+| Test | Operations | Throughput |
+|------|-----------|-----------|
+| TLC hot path (concurrent, all size classes) | 12M ops | **1.1B ops/s** |
+| Multi-slab TLC eviction path | 2.4M ops | **16.7M ops/s** |
+
+### Arena allocator
+
+| Test | Operations | Throughput |
+|------|-----------|-----------|
+| Sequential small allocs (200K × 8B) | 200K allocs | **70M allocs/s** |
+| Alloc/reset cycles (100K cycles, 1K × 100B per cycle) | 100M ops | 107K cycles/s |
+
+### Pool vs malloc (single-thread)
+
+| Test | Pool | malloc | Pool speedup |
+|------|------|--------|-------------|
+| Fixed-size alloc+free (100M ops) | 9.9 ns/op | 17.5 ns/op | **1.76x** |
+| Rapid alloc-free pairs (2M ops) | 7.4 ns/op | 0.69 ns/op | 0.09x¹ |
+| Full pool exhaustion+reuse (1M ops) | 8.2 ns/op | 34.4 ns/op | **4.2x** |
+
+¹ malloc wins at rapid alloc-free because glibc fastbins are optimized for this exact pattern.
+
+### Slab vs malloc (single-thread)
+
+| Test | Slab | malloc | Slab speedup |
+|------|------|--------|-------------|
+| Mixed sizes (2M ops: 32/64/128/256B) | 7.0 ns/op | 8.1 ns/op | **1.16x** |
+| Rapid single-size (2M ops, 64B) | 6.0 ns/op | 0.72 ns/op | 0.12x¹ |
+| Small allocation pattern (1M ops) | 5.8 ns/op | 0.70 ns/op | 0.12x¹ |
+| Batch alloc with delayed free (2M ops) | 7.0 ns/op | 8.5 ns/op | **1.21x** |
+
+¹ malloc wins at rapid alloc-free because glibc fastbins are optimized for this exact pattern.
+
+### Arena vs malloc (single-thread)
+
+| Test | Arena | malloc | Arena speedup |
+|------|-------|--------|--------------|
+| Sequential small allocs (200K × 8B) | 13.9 ns/op | 18.9 ns/op | **1.36x** |
+| Alloc/reset cycles (100M ops) | 9.1 ns/op | 8.8 ns/op | ~1.0x |
+| Mixed sizes (50K allocs: 8/16/32/64B) | 13.5 ns/op | 19.8 ns/op | **1.46x** |
+
+### Multi-threaded (12 threads)
+
+| Test | Throughput |
+|------|------------|
+| Pool: high-contention churn (120M ops) | **7.5M ops/s** |
+| Pool: full exhaustion + concurrent free (3.1M blocks) | **3.4M blocks/s** |
+| Pool: concurrent cycles + synchronized reset (150 cycles) | **88 cycles/s** |
+| Slab: mixed-size contention churn (240M ops) | **191M ops/s** |
+| Slab: per-class contention | **12 threads, 0.25s** |
+| Slab: size-class exhaustion/recovery | **512 blocks, <1ms** |
+| Arena: bulk concurrent allocation (120M allocs) | **6.1M allocs/s** |
+| Arena: contended exhaustion (12M allocs) | **9.8M allocs/s** |
+| Arena: concurrent cycles + synchronized reset (75 cycles) | **13 cycles/s** |
+
+
 
 Benchmarked on Linux (12-core Intel i5 11th gen), compiled with GCC `-O3`. All numbers are ns/op (lower is better).
 
