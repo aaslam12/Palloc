@@ -19,28 +19,28 @@ TEST_CASE("Slab: Construction with scale", "[slab][basic]")
 {
     SECTION("Scale 1.0")
     {
-        AL::slab s{};
+        AL::slab s(1.0);
         REQUIRE(s.get_pool_count() == 10);
         REQUIRE(s.get_total_capacity() > 0);
     }
 
     SECTION("Scale 0.5 has less or equal capacity than scale 1.0")
     {
-        AL::slab s_half{};
-        AL::slab s_full{};
+        AL::slab s_half(0.5);
+        AL::slab s_full(1.0);
         REQUIRE(s_half.get_total_capacity() <= s_full.get_total_capacity());
     }
 
     SECTION("Scale 2.0 has more or equal capacity than scale 1.0")
     {
-        AL::slab s_double{};
-        AL::slab s_full{};
+        AL::slab s_double(2.0);
+        AL::slab s_full(1.0);
         REQUIRE(s_double.get_total_capacity() >= s_full.get_total_capacity());
     }
 
     SECTION("Very small scale still creates usable pools")
     {
-        AL::slab s{};
+        AL::slab s(0.001);
         REQUIRE(s.get_pool_count() == 10);
         REQUIRE(s.get_total_capacity() > 0);
 
@@ -51,7 +51,7 @@ TEST_CASE("Slab: Construction with scale", "[slab][basic]")
 
     SECTION("Large scale")
     {
-        AL::slab s{};
+        AL::slab s(10.0);
         REQUIRE(s.get_pool_count() == 10);
         REQUIRE(s.get_total_capacity() > 0);
     }
@@ -171,7 +171,7 @@ TEST_CASE("Slab: Zero-size allocation", "[slab][alloc][edge]")
 
 TEST_CASE("Slab: Pool exhaustion", "[slab][alloc][edge]")
 {
-    AL::slab s{};
+    AL::slab s(0.01);
 
     SECTION("Exhaust single size class")
     {
@@ -505,7 +505,7 @@ TEST_CASE("Slab: Free space accounting", "[slab][stats]")
 
     SECTION("Free space is zero after full exhaustion of a pool")
     {
-        AL::slab s_small{};
+        AL::slab s_small(0.01);
         // Exhaust the 8-byte pool (index 0)
         while (s_small.alloc(8) != nullptr)
         {
@@ -683,7 +683,7 @@ TEST_CASE("Slab: TLC mixed cached and non-cached allocations", "[slab][tlc]")
 
 TEST_CASE("Slab: TLC exhaust cached pool completely", "[slab][tlc][edge]")
 {
-    AL::slab s{};
+    AL::slab s(0.01);
 
     std::vector<void*> ptrs;
     while (true)

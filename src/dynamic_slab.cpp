@@ -17,7 +17,7 @@ dynamic_slab::slab_node* dynamic_slab::create_node(slab_node* next_ptr)
     {
         // uses placement new. initializes the object at the given address 'mem'.
         // this acts as a constructor call on existing memory and does NOT allocate new memory.
-        return std::construct_at(static_cast<slab_node*>(mem), next_ptr);
+        return std::construct_at(static_cast<slab_node*>(mem), scale, next_ptr);
     }
     catch (...)
     {
@@ -26,7 +26,7 @@ dynamic_slab::slab_node* dynamic_slab::create_node(slab_node* next_ptr)
     }
 }
 
-dynamic_slab::dynamic_slab() : head(nullptr), node_count(0)
+dynamic_slab::dynamic_slab(size_t s) : scale(s), head(nullptr), node_count(0)
 {
     slab_node* node = create_node(nullptr);
     if (node)
@@ -88,10 +88,9 @@ void* dynamic_slab::calloc(size_t size)
     void* ptr = palloc(size);
     if (ptr)
     {
-        // TODO: Replace this with a radix tree
-        // size_t index = slab::size_to_index(size);
-        // if (index != static_cast<size_t>(-1))
-        // std::memset(ptr, 0, slab::index_to_size_class(index));
+        size_t index = slab::size_to_index(size);
+        if (index != static_cast<size_t>(-1))
+            std::memset(ptr, 0, slab::index_to_size_class(index));
     }
     return ptr;
 }

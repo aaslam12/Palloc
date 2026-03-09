@@ -6,17 +6,11 @@
 #include <bit>
 #include <cassert>
 #include <cstddef>
+#include <iterator>
 #include <utility>
-#include <vector>
 
 namespace AL
 {
-struct size_class
-{
-    size_t bytes_class;
-    size_t num_blocks_in_class;
-};
-
 struct thread_local_cache
 {
     // max capacity — actual batch sizes are tuned per size class
@@ -63,9 +57,7 @@ class slab
 {
 public:
     // scale is multiplied by the default number of blocks to allocate
-    void init();
-    slab();
-    slab(const std::vector<size_class>& size_class_config, const std::vector<size_t>& cache_sizes);
+    slab(size_t scale = 1.0);
     ~slab();
 
     slab(const slab&) = delete;
@@ -97,49 +89,48 @@ public:
     // check if pointer belongs to this slab
     bool owns(void* ptr) const;
 
-    size_t size_to_index(size_t size)
+    static constexpr size_t size_to_index(size_t size)
     {
-        if (size == 0 || size > SIZE_CLASS_CONFIG[NUM_SIZE_CLASSES - 1].bytes_class)
+        if (size == 0 || size > SIZE_CLASS_CONFIG[NUM_SIZE_CLASSES - 1].first)
             return static_cast<size_t>(-1);
-
         // clamp to minimum block size, round up to next power of 2, then derive index via bit width
         // e.g. size=9 → bit_ceil(16)=16 → bit_width(16)-4=1 (16B class)
-        size_t s = size < SIZE_CLASS_CONFIG[0].bytes_class ? SIZE_CLASS_CONFIG[0].bytes_class : size;
-        return std::bit_width(std::bit_ceil(s)) - std::bit_width(SIZE_CLASS_CONFIG[0].bytes_class);
+        size_t s = size < SIZE_CLASS_CONFIG[0].first ? SIZE_CLASS_CONFIG[0].first : size;
+        return std::bit_width(std::bit_ceil(s)) - std::bit_width(SIZE_CLASS_CONFIG[0].first);
     }
 
-    size_t index_to_size_class(size_t index)
+    static constexpr size_t index_to_size_class(size_t index)
     {
         if (index >= NUM_SIZE_CLASSES)
             return 0;
-        return SIZE_CLASS_CONFIG[index].bytes_class;
+        return SIZE_CLASS_CONFIG[index].first;
     }
 
 private:
     // compile-time size class configuration
     // <bytes class, number of blocks in class>
-    std::vector<size_class> SIZE_CLASS_CONFIG = {
-        {{8, 512},   // 8B
-         {16, 512},  // 16B
-         {32, 256},  // 32B
-         {64, 256},  // 64B
-         {128, 128}, // 128B
-         {256, 128}, // 256B
-         {512, 64},  // 512B
-         {1024, 64}, // 1024B
-         {2048, 32}, // 2048B
-         {4096, 32}}  //  4096B
+    static constexpr std::array<std::pair<size_t, size_t>, 10> SIZE_CLASS_CONFIG = {
+        {{8, 512},
+         {16, 512},
+         {32, 256},
+         {64, 256},
+         {128, 128},
+         {256, 128},
+         {512, 64},
+         {1024, 64},
+         {2048, 32},
+         {4096, 32}}
     };
-    // static_assert(SIZE_CLASS_CONFIG.size() > 0, "Atleast one entry in SIZE_CLASS_CONFIG required.");
+    static_assert(SIZE_CLASS_CONFIG.size() > 0, "Atleast one entry in SIZE_CLASS_CONFIG required.");
 
     static constexpr size_t MAX_CACHED_SLABS = 4;
-    size_t NUM_SIZE_CLASSES = SIZE_CLASS_CONFIG.size();
+    static constexpr size_t NUM_SIZE_CLASSES = std::size(SIZE_CLASS_CONFIG);
 
     // all size classes are cached via TLC
-    size_t NUM_CACHED_CLASSES = NUM_SIZE_CLASSES;
+    static constexpr size_t NUM_CACHED_CLASSES = NUM_SIZE_CLASSES;
 
     // per class batch sizes. smaller objects get larger batches, larger objects get smaller batches
-    std::vector<size_t> BATCH_SIZES = {
+    static constexpr std::array<size_t, 10> BATCH_SIZES = {
         64, // 8B
         64, // 16B
         32, // 32B
@@ -151,23 +142,23 @@ private:
         4,  // 2048B
         4,  // 4096B
     };
-    // static_assert(BATCH_SIZES.size() == NUM_SIZE_CLASSES);
-    // static_assert(NUM_CACHED_CLASSES <= NUM_SIZE_CLASSES,
-    //               "The number of cached classes must be lower than the amount of size classes available. "
-    //               "Either decrease the cached classes or increase total number of size classes.");
+    static_assert(BATCH_SIZES.size() == NUM_SIZE_CLASSES);
+    static_assert(NUM_CACHED_CLASSES <= NUM_SIZE_CLASSES,
+                  "The number of cached classes must be lower than the amount of size classes available. "
+                  "Either decrease the cached classes or increase total number of size classes.");
 
     struct cache_entry
     {
         size_t epoch;
         slab* owner;
-        std::vector<thread_local_cache> storage;
+        std::array<thread_local_cache, slab::NUM_CACHED_CLASSES> storage;
 
         void flush()
         {
             if (!owner)
                 return; // should we assert?
 
-            for (size_t i = 0; i < owner->NUM_CACHED_CLASSES; i++)
+            for (size_t i = 0; i < NUM_CACHED_CLASSES; i++)
             {
                 // move pointers to appropriate pool from storage?
                 auto& cache = storage[i];
@@ -184,7 +175,7 @@ private:
             if (!owner)
                 return;
 
-            for (size_t i = 0; i < owner->NUM_CACHED_CLASSES; i++)
+            for (size_t i = 0; i < NUM_CACHED_CLASSES; i++)
                 storage[i].invalidate();
         }
     };
@@ -197,25 +188,18 @@ private:
 
         // O(1) fast path: check the preferred hash slot first
         const size_t preferred = slab_id % MAX_CACHED_SLABS;
-        auto& preferred_cache = caches[preferred];
-        if (preferred_cache.owner == this)
-        {
-            preferred_cache.storage.resize(NUM_CACHED_CLASSES);
-            return &preferred_cache;
-        }
+        if (caches[preferred].owner == this)
+            return &caches[preferred];
 
         // Scan for an existing entry for this slab, or the first empty slot.
         // Slabs with colliding hash IDs will land in different slots when space is available.
-        size_t empty_slot = preferred_cache.owner == nullptr ? preferred : (size_t)-1;
+        size_t empty_slot = caches[preferred].owner == nullptr ? preferred : (size_t)-1;
         for (size_t i = 0; i < MAX_CACHED_SLABS; ++i)
         {
             if (i == preferred)
                 continue;
             if (caches[i].owner == this)
-            {
-                caches[i].storage.resize(NUM_CACHED_CLASSES);
                 return &caches[i];
-            }
             if (caches[i].owner == nullptr && empty_slot == (size_t)-1)
                 empty_slot = i;
         }
@@ -226,7 +210,6 @@ private:
             cache_entry& entry = caches[empty_slot];
             entry.owner = this;
             entry.epoch = epoch.load(std::memory_order_acquire);
-            entry.storage.resize(NUM_CACHED_CLASSES);
             init_cache_batch_sizes(entry);
             return &entry;
         }
@@ -239,19 +222,18 @@ private:
         entry.flush();
         entry.owner = this;
         entry.epoch = epoch.load(std::memory_order_acquire);
-        entry.storage.resize(NUM_CACHED_CLASSES);
         init_cache_batch_sizes(entry);
         return &entry;
     }
 
-    void init_cache_batch_sizes(cache_entry& entry)
+    static void init_cache_batch_sizes(cache_entry& entry)
     {
         for (size_t i = 0; i < NUM_CACHED_CLASSES; ++i)
             entry.storage[i].batch_size = BATCH_SIZES[i];
     }
 
     std::atomic<size_t> epoch;
-    std::vector<pool> shared_pools;
+    std::array<pool, NUM_SIZE_CLASSES> shared_pools;
 
     static std::atomic<size_t> next_slab_id;
     size_t slab_id;
