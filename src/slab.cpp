@@ -13,15 +13,30 @@ namespace AL
 thread_local std::array<slab::cache_entry, slab::MAX_CACHED_SLABS> slab::caches = {};
 std::atomic<size_t> slab::next_slab_id{0};
 
-slab::slab(size_t scale) : epoch(0), slab_id(next_slab_id.fetch_add(1, std::memory_order_relaxed))
+void slab::init()
 {
     for (size_t i = 0; i < shared_pools.size(); i++)
     {
-        size_t count = static_cast<size_t>(std::ceil(SIZE_CLASS_CONFIG[i].second * scale));
+        size_t count = static_cast<size_t>(std::ceil(SIZE_CLASS_CONFIG[i].num_blocks_in_class));
         if (count < 1)
             count = 1;
-        shared_pools[i].init(SIZE_CLASS_CONFIG[i].first, count);
+        shared_pools[i].init(SIZE_CLASS_CONFIG[i].bytes_class, count);
     }
+
+    NUM_SIZE_CLASSES = SIZE_CLASS_CONFIG.size();
+    shared_pools.resize(NUM_SIZE_CLASSES);
+}
+
+slab::slab() : epoch(0), shared_pools(SIZE_CLASS_CONFIG.size()), slab_id(next_slab_id.fetch_add(1, std::memory_order_relaxed))
+{
+    init();
+}
+
+slab::slab(const std::vector<size_class>& size_class_config, const std::vector<size_t>& cache_sizes)
+    : SIZE_CLASS_CONFIG(size_class_config), BATCH_SIZES(cache_sizes), epoch(0), shared_pools(SIZE_CLASS_CONFIG.size()),
+      slab_id(next_slab_id.fetch_add(1, std::memory_order_relaxed))
+{
+    init();
 }
 
 slab::~slab()
@@ -52,7 +67,7 @@ void* slab::alloc(size_t size)
 {
     if (size == 0 || size == (size_t)-1)
         return nullptr;
-    if (SIZE_CLASS_CONFIG[NUM_SIZE_CLASSES - 1].first < size)
+    if (SIZE_CLASS_CONFIG[NUM_SIZE_CLASSES - 1].bytes_class < size)
         return nullptr;
 
     size_t index = size_to_index(size);
@@ -103,7 +118,7 @@ void* slab::calloc(size_t size)
     if (ptr != nullptr)
     {
         // should instead refactor to call pool calloc()
-        size_t actual_size = SIZE_CLASS_CONFIG[size_to_index(size)].first;
+        size_t actual_size = SIZE_CLASS_CONFIG[size_to_index(size)].bytes_class;
         std::memset(ptr, 0, actual_size); // zeroes out the entire block, just need the number of bytes, the user requested
     }
 
@@ -123,7 +138,7 @@ void slab::free(void* ptr, size_t size)
 {
     if (size == 0 || size == (size_t)-1)
         return;
-    if (SIZE_CLASS_CONFIG[NUM_SIZE_CLASSES - 1].first < size)
+    if (SIZE_CLASS_CONFIG[NUM_SIZE_CLASSES - 1].bytes_class < size)
         return;
 
     size_t index = size_to_index(size);

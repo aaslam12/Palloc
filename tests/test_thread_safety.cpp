@@ -552,7 +552,7 @@ TEST_CASE("Slab thread safety: concurrent mixed-size alloc/free remains stable",
     // Scale must keep all pools above the TLC high-water mark.
     // With batch_size[8B]=64 and up to 16 threads: 16*64=1024 blocks needed.
     // Default 8B pool = 512 blocks, so scale >= 3. Use 4 for headroom.
-    AL::slab slab(4.0);
+    AL::slab slab{};
     const size_t initial_total_free = slab.get_total_free();
     std::atomic<bool> start{false};
     std::atomic<size_t> null_allocations{0};
@@ -596,7 +596,7 @@ TEST_CASE("Slab thread safety: per-class contention restores each pool", "[slab]
 {
     const size_t threads = std::max<size_t>(worker_count(), SLAB_SIZE_CLASSES.size());
     const size_t iterations = 5000;
-    AL::slab slab(2.0);
+    AL::slab slab{};
 
     std::array<size_t, SLAB_SIZE_CLASSES.size()> initial_free{};
     for (size_t i = 0; i < SLAB_SIZE_CLASSES.size(); ++i)
@@ -642,7 +642,7 @@ TEST_CASE("Slab thread safety: concurrent exhaustion is bounded within a size cl
     const size_t threads = worker_count();
     constexpr size_t class_index = 4; // 128-byte size class
     constexpr size_t request_size = 128;
-    AL::slab slab(0.05);
+    AL::slab slab{};
 
     const size_t block_size = slab.get_pool_block_size(class_index);
     const size_t block_count = slab.get_pool_free_space(class_index) / block_size;
@@ -717,7 +717,7 @@ TEST_CASE("Slab thread safety: concurrent calloc returns zeroed size-class block
         7, 9, 17, 33, 65, 129, 257, 513, 1025, 2049,
     };
     // Same constraint as mixed-size test: scale >= 3 for 16 threads * batch_size[8B]=64.
-    AL::slab slab(3.0);
+    AL::slab slab{};
 
     std::atomic<bool> start{false};
     std::atomic<size_t> null_allocations{0};
@@ -762,7 +762,7 @@ TEST_CASE("Slab thread safety: reset after synchronized workers restores all poo
 {
     const size_t threads = worker_count();
     const size_t iterations = 1500;
-    AL::slab slab(1.0);
+    AL::slab slab{};
     const size_t initial_total_free = slab.get_total_free();
 
     std::atomic<bool> start{false};
@@ -1460,7 +1460,7 @@ TEST_CASE("Slab thread safety: TLC cached class high contention", "[slab][thread
     // All threads hammer a single TLC-cached size class (32 bytes)
     const size_t threads = worker_count();
     const size_t iterations = 5000;
-    AL::slab slab(4.0);
+    AL::slab slab{};
 
     std::atomic<bool> start{false};
     std::atomic<size_t> successful_cycles{0};
@@ -1495,7 +1495,7 @@ TEST_CASE("Slab thread safety: boundary sizes are correctly routed", "[slab][thr
     // Allocate at exact size-class boundaries from many threads
     const size_t threads = worker_count();
     const size_t iterations = 2000;
-    AL::slab slab(3.0);
+    AL::slab slab{};
 
     std::atomic<bool> start{false};
     std::atomic<size_t> success{0};
@@ -1532,7 +1532,7 @@ TEST_CASE("Slab thread safety: data integrity across size classes", "[slab][thre
 {
     const size_t threads = worker_count();
     const size_t allocs_per_thread = 100;
-    AL::slab slab(3.0);
+    AL::slab slab{};
 
     struct alloc_record
     {
@@ -1640,7 +1640,7 @@ TEST_CASE("Slab thread safety: invalid sizes under contention", "[slab][thread]"
 TEST_CASE("Slab thread safety: tiny scale fast exhaustion", "[slab][thread]")
 {
     const size_t threads = worker_count();
-    AL::slab slab(0.01); // minimal blocks per pool
+    AL::slab slab{}; // minimal blocks per pool
 
     std::atomic<bool> start{false};
     std::atomic<size_t> success{0};
@@ -1684,7 +1684,7 @@ TEST_CASE("Slab thread safety: multiple slabs concurrent (TLC eviction)", "[slab
     constexpr size_t num_slabs = 8; // > MAX_CACHED_SLABS (4)
     std::array<std::unique_ptr<AL::slab>, num_slabs> slabs;
     for (auto& s : slabs)
-        s = std::make_unique<AL::slab>(8.0); // large scale to absorb TLC batching overhead
+        s = std::make_unique<AL::slab>(); // large scale to absorb TLC batching overhead
 
     const size_t threads = worker_count();
     const size_t iterations = 2000;
@@ -1732,7 +1732,7 @@ TEST_CASE("Slab thread safety: TLC epoch after reset then realloc", "[slab][thre
     // Verify that after reset, threads see the new epoch and re-alloc works correctly
     const size_t threads = worker_count();
     const size_t iterations = 500;
-    AL::slab slab(2.0);
+    AL::slab slab{};
 
     for (int cycle = 0; cycle < 3; ++cycle)
     {
@@ -1780,7 +1780,7 @@ TEST_CASE("Slab thread safety: concurrent calloc on TLC-cached sizes", "[slab][t
     const size_t iterations = 1000;
     // All size classes are TLC-cached
     constexpr std::array<size_t, 10> cached_sizes = {8, 16, 32, 64, 128, 256, 512, 1024, 2048, 4096};
-    AL::slab slab(4.0);
+    AL::slab slab{};
 
     std::atomic<bool> start{false};
     std::atomic<size_t> non_zero{0};
@@ -1822,7 +1822,7 @@ TEST_CASE("Slab thread safety: each thread uses distinct size class", "[slab][th
     // Threads are pinned to different size classes — no cross-contamination
     const size_t threads = std::min<size_t>(worker_count(), SLAB_SIZE_CLASSES.size());
     const size_t iterations = 3000;
-    AL::slab slab(3.0);
+    AL::slab slab{};
 
     std::atomic<bool> start{false};
     std::atomic<size_t> corruption{0};
@@ -1873,7 +1873,7 @@ TEST_CASE("Slab thread safety: alloc-only burst then bulk free", "[slab][thread]
 {
     const size_t threads = worker_count();
     const size_t allocs_per_thread = 50;
-    AL::slab slab(3.0);
+    AL::slab slab{};
 
     std::atomic<bool> start{false};
     std::vector<std::vector<std::pair<void*, size_t>>> allocated(threads);

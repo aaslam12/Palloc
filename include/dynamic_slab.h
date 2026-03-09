@@ -10,7 +10,7 @@ namespace AL
 class dynamic_slab
 {
 public:
-    explicit dynamic_slab(size_t scale = 1.0);
+    explicit dynamic_slab();
 
     // WARNING: this destructor only cleans up the current thread's thread local caches (TLC).
     // if other threads have allocated from this dynamic_slab, their TLC
@@ -44,7 +44,7 @@ private:
         slab value;
         slab_node* next;
 
-        slab_node(size_t scale, slab_node* next_ptr) : value(scale), next(next_ptr)
+        slab_node(slab_node* next_ptr) : next(next_ptr)
         {}
     };
 
