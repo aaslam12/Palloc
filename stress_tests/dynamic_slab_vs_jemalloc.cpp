@@ -55,7 +55,7 @@ int main()
         std::vector<void*> ptrs(hold);
 
         // Dynamic Slab
-        dynamic_slab ds(1.0);
+        dynamic_slab ds{};
         auto t0 = std::chrono::high_resolution_clock::now();
         for (size_t c = 0; c < cycles; ++c)
         {
@@ -122,7 +122,7 @@ int main()
             std::cout << "  " << label << ": " << ns_per_op(elapsed.count(), ops) << " ns/op | " << throughput(elapsed.count(), ops) << " MOps/s\n";
         };
 
-        dynamic_slab ds(1.0);
+        dynamic_slab ds{};
         run_mt("Dynamic Slab", [&] { return ds.palloc(sz); }, [&](void* p) { ds.free(p, sz); });
         run_mt("jemalloc    ", [&] { return mallocx(sz, 0); }, [](void* p) { dallocx(p, 0); });
         std::cout << "\n";
@@ -171,7 +171,7 @@ int main()
             std::cout << "  " << label << ": " << ns_per_op(elapsed.count(), ops) << " ns/op | " << throughput(elapsed.count(), ops) << " MOps/s\n";
         };
 
-        dynamic_slab ds(2.0);
+        dynamic_slab ds{};
         run_mixed("Dynamic Slab", [&](size_t sz) { return ds.palloc(sz); }, [&](void* p, size_t sz) { ds.free(p, sz); });
         run_mixed("jemalloc    ", [](size_t sz) { return mallocx(sz, 0); }, [](void* p, size_t) { dallocx(p, 0); });
         std::cout << "\n";

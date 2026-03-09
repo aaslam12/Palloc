@@ -32,16 +32,16 @@ int main()
 {
     const size_t threads = worker_count();
 
-    std::cout << "\n=== Pool Threaded Stress Test ===" << std::endl;
-    std::cout << "Threads: " << threads << '\n' << std::endl;
+    std::cout << "\n=== Pool Threaded Stress Test ===" << '\n';
+    std::cout << "Threads: " << threads << '\n' << '\n';
 
     // ========================================================================
     // Test 1: High-contention alloc/free churn
     // ========================================================================
     {
         const size_t block_size = 128;
-        const size_t block_count = threads * 256;
-        const size_t iterations_per_thread = 200000;
+        const size_t block_count = threads * 65536;
+        const size_t iterations_per_thread = 10000000;
         pool p(block_size, block_count);
 
         std::atomic<bool> start{false};
@@ -77,13 +77,13 @@ int main()
 
         if (successful_cycles.load(std::memory_order_relaxed) == 0)
         {
-            std::cerr << "ERROR: No successful alloc/free cycles completed" << std::endl;
+            std::cerr << "ERROR: No successful alloc/free cycles completed" << '\n';
             return 1;
         }
 
         if (p.get_free_space() != p.get_block_size() * p.get_block_count())
         {
-            std::cerr << "ERROR: Pool did not fully recover after churn" << std::endl;
+            std::cerr << "ERROR: Pool did not fully recover after churn" << '\n';
             return 1;
         }
 
@@ -93,7 +93,7 @@ int main()
                   << "Elapsed:           " << elapsed.count() << " s\n"
                   << "Ops/sec:           " << (total_ops / elapsed.count()) << '\n'
                   << "[PASSED]\n"
-                  << std::endl;
+                  << '\n';
     }
 
     // ========================================================================
@@ -101,7 +101,7 @@ int main()
     // ========================================================================
     {
         const size_t block_size = 64;
-        const size_t block_count = threads * 2048;
+        const size_t block_count = threads * 262144;
         pool p(block_size, block_count);
 
         std::atomic<bool> start{false};
@@ -136,9 +136,8 @@ int main()
 
         if (successful_allocs.load(std::memory_order_relaxed) != block_count)
         {
-            std::cerr << "ERROR: Exhaustion mismatch. Expected " << block_count
-                      << " allocations, got " << successful_allocs.load(std::memory_order_relaxed)
-                      << std::endl;
+            std::cerr << "ERROR: Exhaustion mismatch. Expected " << block_count << " allocations, got "
+                      << successful_allocs.load(std::memory_order_relaxed) << '\n';
             return 1;
         }
 
@@ -150,14 +149,14 @@ int main()
             {
                 if (!unique_ptrs.insert(ptr).second)
                 {
-                    std::cerr << "ERROR: Duplicate pointer detected during full exhaustion" << std::endl;
+                    std::cerr << "ERROR: Duplicate pointer detected during full exhaustion" << '\n';
                     return 1;
                 }
             }
         }
         if (unique_ptrs.size() != block_count)
         {
-            std::cerr << "ERROR: Unique pointer count mismatch during full exhaustion" << std::endl;
+            std::cerr << "ERROR: Unique pointer count mismatch during full exhaustion" << '\n';
             return 1;
         }
 
@@ -181,7 +180,7 @@ int main()
 
         if (p.get_free_space() != p.get_block_size() * p.get_block_count())
         {
-            std::cerr << "ERROR: Pool not fully free after concurrent free phase" << std::endl;
+            std::cerr << "ERROR: Pool not fully free after concurrent free phase" << '\n';
             return 1;
         }
 
@@ -189,7 +188,7 @@ int main()
                   << "Blocks exhausted:   " << block_count << '\n'
                   << "Elapsed:            " << elapsed.count() << " s\n"
                   << "[PASSED]\n"
-                  << std::endl;
+                  << '\n';
     }
 
     // ========================================================================
@@ -197,7 +196,7 @@ int main()
     // ========================================================================
     {
         const size_t block_size = 96;
-        const size_t block_count = threads * 512;
+        const size_t block_count = threads * 131072;
         const size_t allocs_per_thread = 256;
         const size_t cycles = 150;
         pool p(block_size, block_count);
@@ -237,14 +236,14 @@ int main()
 
             if (null_allocations.load(std::memory_order_relaxed) != 0)
             {
-                std::cerr << "ERROR: Unexpected allocation failure in cycle " << cycle << std::endl;
+                std::cerr << "ERROR: Unexpected allocation failure in cycle " << cycle << '\n';
                 return 1;
             }
 
             p.reset();
             if (p.get_free_space() != p.get_block_size() * p.get_block_count())
             {
-                std::cerr << "ERROR: Reset failed to restore free space in cycle " << cycle << std::endl;
+                std::cerr << "ERROR: Reset failed to restore free space in cycle " << cycle << '\n';
                 return 1;
             }
         }
@@ -256,11 +255,11 @@ int main()
                   << "Cycles:             " << cycles << '\n'
                   << "Elapsed:            " << elapsed.count() << " s\n"
                   << "[PASSED]\n"
-                  << std::endl;
+                  << '\n';
     }
 
-    std::cout << "========================================" << std::endl;
-    std::cout << "[PASSED] All pool threaded stress tests passed!" << std::endl;
-    std::cout << "========================================\n" << std::endl;
+    std::cout << "========================================" << '\n';
+    std::cout << "[PASSED] All pool threaded stress tests passed!" << '\n';
+    std::cout << "========================================\n" << '\n';
     return 0;
 }

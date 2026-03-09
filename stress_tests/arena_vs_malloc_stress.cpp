@@ -11,26 +11,26 @@ static const size_t PAGE_SIZE = getpagesize();
 
 int main()
 {
-    const int SMALL_ALLOCS = 100000;       // 100K allocations
-    const int RESET_CYCLES = 10000;        // 10K cycles
-    const int ALLOCS_PER_RESET = 100;      // 100 per reset
+    const int SMALL_ALLOCS = 200000; // 100K allocations
+    const int RESET_CYCLES = 100000;  // 10K cycles
+    const int ALLOCS_PER_RESET = 1000; // 100 per reset
     const int ALLOC_SIZE = 100;
 
-    std::cout << "\n========================================" << std::endl;
-    std::cout << "Arena vs Malloc Performance Comparison" << std::endl;
-    std::cout << "========================================\n" << std::endl;
-    std::cout << "Page size: " << PAGE_SIZE << " bytes\n" << std::endl;
+    std::cout << "\n========================================" << '\n';
+    std::cout << "Arena vs Malloc Performance Comparison" << '\n';
+    std::cout << "========================================\n" << '\n';
+    std::cout << "Page size: " << PAGE_SIZE << " bytes\n" << '\n';
 
     // ========================================================================
     // Test 1: Many small allocations (no free)
     // ========================================================================
     {
-        std::cout << "--- Test 1: Sequential Small Allocations (no free) ---" << std::endl;
-        std::cout << "Operations: " << SMALL_ALLOCS << " x 8 byte allocations" << std::endl;
+        std::cout << "--- Test 1: Sequential Small Allocations (no free) ---" << '\n';
+        std::cout << "Operations: " << SMALL_ALLOCS << " x 8 byte allocations" << '\n';
 
         // Test with Arena
         {
-            std::cout << "\n[Testing Arena]" << std::endl;
+            std::cout << "\n[Testing Arena]" << '\n';
             AL::arena a(PAGE_SIZE * 1000);
             std::vector<void*> ptrs;
 
@@ -41,28 +41,28 @@ int main()
                 void* ptr = a.alloc(8);
                 if (ptr == nullptr)
                 {
-                    std::cerr << "ERROR: Arena allocation failed at iteration " << i << std::endl;
+                    std::cerr << "ERROR: Arena allocation failed at iteration " << i << '\n';
                     return 1;
                 }
                 ptrs.push_back(ptr);
 
                 if ((i + 1) % 25000 == 0)
                 {
-                    std::cout << "  Progress: " << (i + 1) << "/" << SMALL_ALLOCS << std::endl;
+                    std::cout << "  Progress: " << (i + 1) << "/" << SMALL_ALLOCS << '\n';
                 }
             }
 
             auto end = std::chrono::high_resolution_clock::now();
             std::chrono::duration<double> elapsed = end - start;
 
-            std::cout << "Arena time:       " << elapsed.count() << " s" << std::endl;
-            std::cout << "Avg per alloc:    " << (elapsed.count() * 1e6 / SMALL_ALLOCS) << " us" << std::endl;
-            std::cout << "Allocs per sec:   " << (SMALL_ALLOCS / elapsed.count()) << std::endl;
+            std::cout << "Arena time:       " << elapsed.count() << " s" << '\n';
+            std::cout << "Avg per alloc:    " << (elapsed.count() * 1e6 / SMALL_ALLOCS) << " us" << '\n';
+            std::cout << "Allocs per sec:   " << (SMALL_ALLOCS / elapsed.count()) << '\n';
         }
 
         // Test with malloc
         {
-            std::cout << "\n[Testing malloc]" << std::endl;
+            std::cout << "\n[Testing malloc]" << '\n';
             std::vector<void*> ptrs;
 
             auto start = std::chrono::high_resolution_clock::now();
@@ -72,23 +72,23 @@ int main()
                 void* ptr = malloc(8);
                 if (ptr == nullptr)
                 {
-                    std::cerr << "ERROR: malloc failed at iteration " << i << std::endl;
+                    std::cerr << "ERROR: malloc failed at iteration " << i << '\n';
                     return 1;
                 }
                 ptrs.push_back(ptr);
 
                 if ((i + 1) % 25000 == 0)
                 {
-                    std::cout << "  Progress: " << (i + 1) << "/" << SMALL_ALLOCS << std::endl;
+                    std::cout << "  Progress: " << (i + 1) << "/" << SMALL_ALLOCS << '\n';
                 }
             }
 
             auto end = std::chrono::high_resolution_clock::now();
             std::chrono::duration<double> elapsed = end - start;
 
-            std::cout << "malloc time:      " << elapsed.count() << " s" << std::endl;
-            std::cout << "Avg per alloc:    " << (elapsed.count() * 1e6 / SMALL_ALLOCS) << " us" << std::endl;
-            std::cout << "Allocs per sec:   " << (SMALL_ALLOCS / elapsed.count()) << std::endl;
+            std::cout << "malloc time:      " << elapsed.count() << " s" << '\n';
+            std::cout << "Avg per alloc:    " << (elapsed.count() * 1e6 / SMALL_ALLOCS) << " us" << '\n';
+            std::cout << "Allocs per sec:   " << (SMALL_ALLOCS / elapsed.count()) << '\n';
 
             // Free all malloc'd memory
             for (void* ptr : ptrs)
@@ -97,21 +97,21 @@ int main()
             }
         }
 
-        std::cout << "\n[PASSED] Test 1 completed\n" << std::endl;
+        std::cout << "\n[PASSED] Test 1 completed\n" << '\n';
     }
 
     // ========================================================================
     // Test 2: Repeated alloc/reset cycles
     // ========================================================================
     {
-        std::cout << "--- Test 2: Repeated Alloc/Reset Cycles ---" << std::endl;
-        std::cout << "Cycles:           " << RESET_CYCLES << std::endl;
-        std::cout << "Allocs per cycle: " << ALLOCS_PER_RESET << " x " << ALLOC_SIZE << " bytes" << std::endl;
+        std::cout << "--- Test 2: Repeated Alloc/Reset Cycles ---" << '\n';
+        std::cout << "Cycles:           " << RESET_CYCLES << '\n';
+        std::cout << "Allocs per cycle: " << ALLOCS_PER_RESET << " x " << ALLOC_SIZE << " bytes" << '\n';
 
         // Test with Arena
         {
-            std::cout << "\n[Testing Arena with reset]" << std::endl;
-            AL::arena a(PAGE_SIZE * 4);
+            std::cout << "\n[Testing Arena with reset]" << '\n';
+            AL::arena a(PAGE_SIZE * 32);
 
             auto start = std::chrono::high_resolution_clock::now();
 
@@ -122,8 +122,7 @@ int main()
                     void* ptr = a.alloc(ALLOC_SIZE);
                     if (ptr == nullptr)
                     {
-                        std::cerr << "ERROR: Arena allocation failed at cycle " << cycle
-                                  << ", iteration " << i << std::endl;
+                        std::cerr << "ERROR: Arena allocation failed at cycle " << cycle << ", iteration " << i << '\n';
                         return 1;
                     }
                 }
@@ -132,7 +131,7 @@ int main()
 
                 if ((cycle + 1) % 2500 == 0)
                 {
-                    std::cout << "  Progress: " << (cycle + 1) << "/" << RESET_CYCLES << std::endl;
+                    std::cout << "  Progress: " << (cycle + 1) << "/" << RESET_CYCLES << '\n';
                 }
             }
 
@@ -140,15 +139,15 @@ int main()
             std::chrono::duration<double> elapsed = end - start;
             int total_ops = RESET_CYCLES * (ALLOCS_PER_RESET + 1); // +1 for reset
 
-            std::cout << "Arena time:       " << elapsed.count() << " s" << std::endl;
-            std::cout << "Total ops:        " << total_ops << " (allocs + resets)" << std::endl;
-            std::cout << "Avg per op:       " << (elapsed.count() * 1e6 / total_ops) << " us" << std::endl;
-            std::cout << "Ops per sec:      " << (total_ops / elapsed.count()) << std::endl;
+            std::cout << "Arena time:       " << elapsed.count() << " s" << '\n';
+            std::cout << "Total ops:        " << total_ops << " (allocs + resets)" << '\n';
+            std::cout << "Avg per op:       " << (elapsed.count() * 1e6 / total_ops) << " us" << '\n';
+            std::cout << "Ops per sec:      " << (total_ops / elapsed.count()) << '\n';
         }
 
         // Test with malloc/free
         {
-            std::cout << "\n[Testing malloc/free]" << std::endl;
+            std::cout << "\n[Testing malloc/free]" << '\n';
 
             auto start = std::chrono::high_resolution_clock::now();
 
@@ -161,8 +160,7 @@ int main()
                     void* ptr = malloc(ALLOC_SIZE);
                     if (ptr == nullptr)
                     {
-                        std::cerr << "ERROR: malloc failed at cycle " << cycle
-                                  << ", iteration " << i << std::endl;
+                        std::cerr << "ERROR: malloc failed at cycle " << cycle << ", iteration " << i << '\n';
                         return 1;
                     }
                     ptrs.push_back(ptr);
@@ -176,7 +174,7 @@ int main()
 
                 if ((cycle + 1) % 2500 == 0)
                 {
-                    std::cout << "  Progress: " << (cycle + 1) << "/" << RESET_CYCLES << std::endl;
+                    std::cout << "  Progress: " << (cycle + 1) << "/" << RESET_CYCLES << '\n';
                 }
             }
 
@@ -184,26 +182,26 @@ int main()
             std::chrono::duration<double> elapsed = end - start;
             int total_ops = RESET_CYCLES * (ALLOCS_PER_RESET * 2); // alloc + free
 
-            std::cout << "malloc time:      " << elapsed.count() << " s" << std::endl;
-            std::cout << "Total ops:        " << total_ops << " (allocs + frees)" << std::endl;
-            std::cout << "Avg per op:       " << (elapsed.count() * 1e6 / total_ops) << " us" << std::endl;
-            std::cout << "Ops per sec:      " << (total_ops / elapsed.count()) << std::endl;
+            std::cout << "malloc time:      " << elapsed.count() << " s" << '\n';
+            std::cout << "Total ops:        " << total_ops << " (allocs + frees)" << '\n';
+            std::cout << "Avg per op:       " << (elapsed.count() * 1e6 / total_ops) << " us" << '\n';
+            std::cout << "Ops per sec:      " << (total_ops / elapsed.count()) << '\n';
         }
 
-        std::cout << "\n[PASSED] Test 2 completed\n" << std::endl;
+        std::cout << "\n[PASSED] Test 2 completed\n" << '\n';
     }
 
     // ========================================================================
     // Test 3: Mixed size allocations
     // ========================================================================
     {
-        std::cout << "--- Test 3: Mixed Size Allocations ---" << std::endl;
+        std::cout << "--- Test 3: Mixed Size Allocations ---" << '\n';
         const int MIXED_ALLOCS = 50000;
-        std::cout << "Operations: " << MIXED_ALLOCS << " allocations (sizes: 8, 16, 32, 64 bytes)" << std::endl;
+        std::cout << "Operations: " << MIXED_ALLOCS << " allocations (sizes: 8, 16, 32, 64 bytes)" << '\n';
 
         // Test with Arena
         {
-            std::cout << "\n[Testing Arena]" << std::endl;
+            std::cout << "\n[Testing Arena]" << '\n';
             AL::arena a(PAGE_SIZE * 500);
             std::vector<void*> ptrs;
 
@@ -215,28 +213,28 @@ int main()
                 void* ptr = a.alloc(size);
                 if (ptr == nullptr)
                 {
-                    std::cerr << "ERROR: Arena allocation failed at iteration " << i << std::endl;
+                    std::cerr << "ERROR: Arena allocation failed at iteration " << i << '\n';
                     return 1;
                 }
                 ptrs.push_back(ptr);
 
                 if ((i + 1) % 12500 == 0)
                 {
-                    std::cout << "  Progress: " << (i + 1) << "/" << MIXED_ALLOCS << std::endl;
+                    std::cout << "  Progress: " << (i + 1) << "/" << MIXED_ALLOCS << '\n';
                 }
             }
 
             auto end = std::chrono::high_resolution_clock::now();
             std::chrono::duration<double> elapsed = end - start;
 
-            std::cout << "Arena time:       " << elapsed.count() << " s" << std::endl;
-            std::cout << "Avg per alloc:    " << (elapsed.count() * 1e6 / MIXED_ALLOCS) << " us" << std::endl;
-            std::cout << "Allocs per sec:   " << (MIXED_ALLOCS / elapsed.count()) << std::endl;
+            std::cout << "Arena time:       " << elapsed.count() << " s" << '\n';
+            std::cout << "Avg per alloc:    " << (elapsed.count() * 1e6 / MIXED_ALLOCS) << " us" << '\n';
+            std::cout << "Allocs per sec:   " << (MIXED_ALLOCS / elapsed.count()) << '\n';
         }
 
         // Test with malloc
         {
-            std::cout << "\n[Testing malloc]" << std::endl;
+            std::cout << "\n[Testing malloc]" << '\n';
             std::vector<void*> ptrs;
 
             auto start = std::chrono::high_resolution_clock::now();
@@ -247,23 +245,23 @@ int main()
                 void* ptr = malloc(size);
                 if (ptr == nullptr)
                 {
-                    std::cerr << "ERROR: malloc failed at iteration " << i << std::endl;
+                    std::cerr << "ERROR: malloc failed at iteration " << i << '\n';
                     return 1;
                 }
                 ptrs.push_back(ptr);
 
                 if ((i + 1) % 12500 == 0)
                 {
-                    std::cout << "  Progress: " << (i + 1) << "/" << MIXED_ALLOCS << std::endl;
+                    std::cout << "  Progress: " << (i + 1) << "/" << MIXED_ALLOCS << '\n';
                 }
             }
 
             auto end = std::chrono::high_resolution_clock::now();
             std::chrono::duration<double> elapsed = end - start;
 
-            std::cout << "malloc time:      " << elapsed.count() << " s" << std::endl;
-            std::cout << "Avg per alloc:    " << (elapsed.count() * 1e6 / MIXED_ALLOCS) << " us" << std::endl;
-            std::cout << "Allocs per sec:   " << (MIXED_ALLOCS / elapsed.count()) << std::endl;
+            std::cout << "malloc time:      " << elapsed.count() << " s" << '\n';
+            std::cout << "Avg per alloc:    " << (elapsed.count() * 1e6 / MIXED_ALLOCS) << " us" << '\n';
+            std::cout << "Allocs per sec:   " << (MIXED_ALLOCS / elapsed.count()) << '\n';
 
             // Free all malloc'd memory
             for (void* ptr : ptrs)
@@ -272,12 +270,12 @@ int main()
             }
         }
 
-        std::cout << "\n[PASSED] Test 3 completed\n" << std::endl;
+        std::cout << "\n[PASSED] Test 3 completed\n" << '\n';
     }
 
-    std::cout << "========================================" << std::endl;
-    std::cout << "[PASSED] All arena vs malloc tests passed!" << std::endl;
-    std::cout << "========================================" << std::endl;
+    std::cout << "========================================" << '\n';
+    std::cout << "[PASSED] All arena vs malloc tests passed!" << '\n';
+    std::cout << "========================================" << '\n';
 
     return 0;
 }

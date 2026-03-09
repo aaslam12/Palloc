@@ -118,7 +118,7 @@ int main()
         for (size_t sz : sizes)
         {
             // Palloc Slab
-            slab ps(8.0);
+            slab ps{};
             auto t0 = clk::now();
             for (size_t i = 0; i < ops; ++i)
             {
@@ -130,7 +130,7 @@ int main()
             double slab_ns = ns_per_op(std::chrono::duration<double>(clk::now() - t0).count(), ops * 2);
 
             // Dynamic Slab
-            dynamic_slab ds(2.0);
+            dynamic_slab ds{};
             t0 = clk::now();
             for (size_t i = 0; i < ops; ++i)
             {
@@ -254,7 +254,7 @@ int main()
         results.push_back({"Pool", ns_per_op(elapsed, ops * 2), mops_per_s(elapsed, ops * 2)});
 
         // Slab
-        slab s(8.0);
+        slab s{};
         t0 = clk::now();
         for (size_t i = 0; i < ops; ++i)
         {
@@ -305,7 +305,7 @@ int main()
         std::vector<result> results;
 
         // Slab
-        slab ps(8.0);
+        slab ps{};
         auto t0 = clk::now();
         for (size_t c = 0; c < cycles; ++c)
         {
@@ -324,7 +324,7 @@ int main()
         results.push_back({"Slab (TLC)", ns_per_op(elapsed, cycles * batch * 2), mops_per_s(elapsed, cycles * batch * 2)});
 
         // Dynamic Slab
-        dynamic_slab ds(2.0);
+        dynamic_slab ds{};
         t0 = clk::now();
         for (size_t c = 0; c < cycles; ++c)
         {
@@ -422,10 +422,10 @@ int main()
             return {label, ns_per_op(elapsed, ops), mops_per_s(elapsed, ops)};
         };
 
-        slab ps(8.0);
+        slab ps{};
         results.push_back(run_mt("Slab (TLC)", [&] { return ps.alloc(sz); }, [&](void* p) { ps.free(p, sz); }));
 
-        dynamic_slab ds(2.0);
+        dynamic_slab ds{};
         results.push_back(
             run_mt("Dynamic Slab", [&] { return ds.palloc(sz); }, [&](void* p) { ds.free(p, sz); }));
 
@@ -477,11 +477,11 @@ int main()
             return {label, ns_per_op(elapsed, ops), mops_per_s(elapsed, ops)};
         };
 
-        slab ps(8.0);
+        slab ps{};
         results.push_back(
             run_mixed("Slab (TLC)", [&](size_t sz) { return ps.alloc(sz); }, [&](void* p, size_t sz) { ps.free(p, sz); }));
 
-        dynamic_slab ds(2.0);
+        dynamic_slab ds{};
         results.push_back(
             run_mixed("Dynamic Slab", [&](size_t sz) { return ds.palloc(sz); }, [&](void* p, size_t sz) { ds.free(p, sz); }));
 
@@ -544,10 +544,10 @@ int main()
             return {label, ns_per_op(elapsed, ops), mops_per_s(elapsed, ops)};
         };
 
-        slab ps(8.0);
+        slab ps{};
         results.push_back(run_hold("Slab (TLC)", [&] { return ps.alloc(sz); }, [&](void* p) { ps.free(p, sz); }));
 
-        dynamic_slab ds(2.0);
+        dynamic_slab ds{};
         results.push_back(
             run_hold("Dynamic Slab", [&] { return ds.palloc(sz); }, [&](void* p) { ds.free(p, sz); }));
 
@@ -574,7 +574,7 @@ int main()
         for (size_t sz : sizes)
         {
             // Slab calloc
-            slab ps(8.0);
+            slab ps{};
             auto t0 = clk::now();
             for (size_t i = 0; i < ops; ++i)
             {

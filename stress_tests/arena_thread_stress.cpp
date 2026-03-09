@@ -34,14 +34,14 @@ int main()
     const size_t threads = worker_count();
     const size_t alloc_size = 32;
 
-    std::cout << "\n=== Arena Threaded Stress Test ===" << std::endl;
-    std::cout << "Threads: " << threads << ", alloc size: " << alloc_size << " bytes\n" << std::endl;
+    std::cout << "\n=== Arena Threaded Stress Test ===" << '\n';
+    std::cout << "Threads: " << threads << ", alloc size: " << alloc_size << " bytes\n" << '\n';
 
     // ========================================================================
     // Test 1: Fully concurrent bulk allocation
     // ========================================================================
     {
-        const size_t allocs_per_thread = 20000;
+        const size_t allocs_per_thread = 10000000;
         const size_t total_allocs = threads * allocs_per_thread;
         arena a(total_allocs * alloc_size);
 
@@ -83,7 +83,7 @@ int main()
 
         if (null_allocations.load(std::memory_order_relaxed) != 0)
         {
-            std::cerr << "ERROR: Unexpected allocation failures in bulk concurrent test" << std::endl;
+            std::cerr << "ERROR: Unexpected allocation failures in bulk concurrent test" << '\n';
             return 1;
         }
 
@@ -96,7 +96,7 @@ int main()
             {
                 if (!unique_ptrs.insert(ptr).second)
                 {
-                    std::cerr << "ERROR: Duplicate pointer detected in concurrent allocations" << std::endl;
+                    std::cerr << "ERROR: Duplicate pointer detected in concurrent allocations" << '\n';
                     return 1;
                 }
             }
@@ -105,15 +105,13 @@ int main()
 
         if (seen != total_allocs)
         {
-            std::cerr << "ERROR: Allocation count mismatch. Expected " << total_allocs
-                      << ", got " << seen << std::endl;
+            std::cerr << "ERROR: Allocation count mismatch. Expected " << total_allocs << ", got " << seen << '\n';
             return 1;
         }
 
         if (a.get_used() != total_allocs * alloc_size)
         {
-            std::cerr << "ERROR: Used bytes mismatch. Expected " << (total_allocs * alloc_size)
-                      << ", got " << a.get_used() << std::endl;
+            std::cerr << "ERROR: Used bytes mismatch. Expected " << (total_allocs * alloc_size) << ", got " << a.get_used() << '\n';
             return 1;
         }
 
@@ -122,14 +120,14 @@ int main()
                   << "Elapsed:           " << elapsed.count() << " s\n"
                   << "Allocs/sec:        " << (total_allocs / elapsed.count()) << '\n'
                   << "[PASSED]\n"
-                  << std::endl;
+                  << '\n';
     }
 
     // ========================================================================
     // Test 2: Exhaustion under contention
     // ========================================================================
     {
-        const size_t capacity_slots = threads * 5000;
+        const size_t capacity_slots = threads * 1000000;
         const size_t attempts_per_thread = (capacity_slots / threads) + 2000;
         arena a(capacity_slots * alloc_size);
 
@@ -169,14 +167,14 @@ int main()
         const size_t success_count = successful_allocs.load(std::memory_order_relaxed);
         if (success_count != capacity_slots)
         {
-            std::cerr << "ERROR: Contended exhaustion mismatch. Expected " << capacity_slots
-                      << " successful allocations, got " << success_count << std::endl;
+            std::cerr << "ERROR: Contended exhaustion mismatch. Expected " << capacity_slots << " successful allocations, got " << success_count
+                      << '\n';
             return 1;
         }
 
         if (a.get_used() != capacity_slots * alloc_size)
         {
-            std::cerr << "ERROR: Used bytes mismatch after contention exhaustion" << std::endl;
+            std::cerr << "ERROR: Used bytes mismatch after contention exhaustion" << '\n';
             return 1;
         }
 
@@ -188,14 +186,14 @@ int main()
             {
                 if (!unique_ptrs.insert(ptr).second)
                 {
-                    std::cerr << "ERROR: Duplicate pointer detected during exhaustion test" << std::endl;
+                    std::cerr << "ERROR: Duplicate pointer detected during exhaustion test" << '\n';
                     return 1;
                 }
             }
         }
         if (unique_ptrs.size() != capacity_slots)
         {
-            std::cerr << "ERROR: Unique pointer count mismatch in exhaustion test" << std::endl;
+            std::cerr << "ERROR: Unique pointer count mismatch in exhaustion test" << '\n';
             return 1;
         }
 
@@ -203,7 +201,7 @@ int main()
                   << "Successful allocs: " << success_count << '\n'
                   << "Elapsed:           " << elapsed.count() << " s\n"
                   << "[PASSED]\n"
-                  << std::endl;
+                  << '\n';
     }
 
     // ========================================================================
@@ -211,7 +209,7 @@ int main()
     // ========================================================================
     {
         const size_t cycles = 75;
-        const size_t allocs_per_thread_per_cycle = 500;
+        const size_t allocs_per_thread_per_cycle = 50000;
         const size_t cycle_bytes = threads * allocs_per_thread_per_cycle * alloc_size;
         arena a(cycle_bytes);
 
@@ -247,19 +245,19 @@ int main()
 
             if (null_allocations.load(std::memory_order_relaxed) != 0)
             {
-                std::cerr << "ERROR: Allocation failure in cycle " << cycle << std::endl;
+                std::cerr << "ERROR: Allocation failure in cycle " << cycle << '\n';
                 return 1;
             }
 
             if (a.get_used() != cycle_bytes)
             {
-                std::cerr << "ERROR: Used byte mismatch in cycle " << cycle << std::endl;
+                std::cerr << "ERROR: Used byte mismatch in cycle " << cycle << '\n';
                 return 1;
             }
 
             if (a.reset() != 0 || a.get_used() != 0)
             {
-                std::cerr << "ERROR: Reset failed in cycle " << cycle << std::endl;
+                std::cerr << "ERROR: Reset failed in cycle " << cycle << '\n';
                 return 1;
             }
         }
@@ -271,11 +269,11 @@ int main()
                   << "Cycles:            " << cycles << '\n'
                   << "Elapsed:           " << elapsed.count() << " s\n"
                   << "[PASSED]\n"
-                  << std::endl;
+                  << '\n';
     }
 
-    std::cout << "========================================" << std::endl;
-    std::cout << "[PASSED] All arena threaded stress tests passed!" << std::endl;
-    std::cout << "========================================\n" << std::endl;
+    std::cout << "========================================" << '\n';
+    std::cout << "[PASSED] All arena threaded stress tests passed!" << '\n';
+    std::cout << "========================================\n" << '\n';
     return 0;
 }
