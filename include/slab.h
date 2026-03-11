@@ -6,11 +6,76 @@
 #include <bit>
 #include <cassert>
 #include <cstddef>
-#include <iterator>
-#include <utility>
+#include <cstring>
 
 namespace AL
 {
+
+struct size_class
+{
+    std::size_t byte_size;
+    std::size_t num_blocks;
+    std::size_t batch_size;
+};
+
+constexpr bool is_power_of_two(std::size_t x) noexcept
+{
+    return x && ((x & (x - 1)) == 0);
+}
+
+consteval bool is_valid_config(const auto& arr) noexcept
+{
+    std::size_t prev_size = 0;
+    for (std::size_t i = 0; i < arr.size(); ++i)
+    {
+        auto const& sc = arr[i];
+        if (sc.byte_size == 0)
+            return false;
+        if (!is_power_of_two(sc.byte_size))
+            return false;
+        if (sc.num_blocks == 0)
+            return false;
+        if (sc.batch_size == 0)
+            return false;
+        if (sc.batch_size > sc.num_blocks)
+            return false;
+        if (i > 0 && sc.byte_size <= prev_size)
+            return false;
+        if (sc.num_blocks > (std::numeric_limits<std::size_t>::max() / sc.byte_size))
+            return false;
+        prev_size = sc.byte_size;
+    }
+    return true;
+}
+
+template<std::size_t Tnum = 10,
+         std::array<size_class, Tnum> Tsize_class_config =
+             {
+                 size_class{   .byte_size = 8, .num_blocks = 512, .batch_size = 64},
+                 size_class{  .byte_size = 16, .num_blocks = 512, .batch_size = 64},
+                 size_class{  .byte_size = 32, .num_blocks = 256, .batch_size = 32},
+                 size_class{  .byte_size = 64, .num_blocks = 256, .batch_size = 32},
+                 size_class{ .byte_size = 128, .num_blocks = 128, .batch_size = 16},
+                 size_class{ .byte_size = 256, .num_blocks = 128, .batch_size = 16},
+                 size_class{ .byte_size = 512,  .num_blocks = 64,  .batch_size = 8},
+                 size_class{.byte_size = 1024,  .num_blocks = 64,  .batch_size = 8},
+                 size_class{.byte_size = 2048,  .num_blocks = 32,  .batch_size = 4},
+                 size_class{.byte_size = 4096,  .num_blocks = 32,  .batch_size = 4}
+},
+         std::size_t Tnum_cached_classes = Tnum>
+struct slab_config
+{
+    static_assert(Tnum_cached_classes <= Tnum, "NUM_CACHED_CLASSES must be <= total size-class count");
+
+    static_assert(Tnum > 0, "at least one size class required");
+    static_assert(is_valid_config(Tsize_class_config),
+                  "Invalid SIZE_CLASS_CONFIG: power-of-two, strictly increasing sizes, non-zero counts required");
+
+    inline static constexpr std::array<size_class, Tnum> SIZE_CLASS_CONFIG = Tsize_class_config;
+    static constexpr std::size_t NUM_SIZE_CLASSES = Tnum;
+    static constexpr std::size_t NUM_CACHED_CLASSES = Tnum_cached_classes;
+};
+
 struct thread_local_cache
 {
     // max capacity — actual batch sizes are tuned per size class
@@ -53,11 +118,12 @@ struct thread_local_cache
     }
 };
 
+template<typename Tconfig>
 class slab
 {
 public:
     // scale is multiplied by the default number of blocks to allocate
-    slab(size_t scale = 1.0);
+    slab();
     ~slab();
 
     slab(const slab&) = delete;
@@ -91,74 +157,36 @@ public:
 
     static constexpr size_t size_to_index(size_t size)
     {
-        if (size == 0 || size > SIZE_CLASS_CONFIG[NUM_SIZE_CLASSES - 1].first)
+        if (size == 0 || size > Tconfig::SIZE_CLASS_CONFIG[Tconfig::NUM_SIZE_CLASSES - 1].byte_size)
             return static_cast<size_t>(-1);
         // clamp to minimum block size, round up to next power of 2, then derive index via bit width
         // e.g. size=9 → bit_ceil(16)=16 → bit_width(16)-4=1 (16B class)
-        size_t s = size < SIZE_CLASS_CONFIG[0].first ? SIZE_CLASS_CONFIG[0].first : size;
-        return std::bit_width(std::bit_ceil(s)) - std::bit_width(SIZE_CLASS_CONFIG[0].first);
+        size_t s = size < Tconfig::SIZE_CLASS_CONFIG[0].byte_size ? Tconfig::SIZE_CLASS_CONFIG[0].byte_size : size;
+        return std::bit_width(std::bit_ceil(s)) - std::bit_width(Tconfig::SIZE_CLASS_CONFIG[0].byte_size);
     }
 
     static constexpr size_t index_to_size_class(size_t index)
     {
-        if (index >= NUM_SIZE_CLASSES)
+        if (index >= Tconfig::NUM_SIZE_CLASSES)
             return 0;
-        return SIZE_CLASS_CONFIG[index].first;
+        return Tconfig::SIZE_CLASS_CONFIG[index].byte_size;
     }
 
 private:
-    // compile-time size class configuration
-    // <bytes class, number of blocks in class>
-    static constexpr std::array<std::pair<size_t, size_t>, 10> SIZE_CLASS_CONFIG = {
-        {{8, 512},
-         {16, 512},
-         {32, 256},
-         {64, 256},
-         {128, 128},
-         {256, 128},
-         {512, 64},
-         {1024, 64},
-         {2048, 32},
-         {4096, 32}}
-    };
-    static_assert(SIZE_CLASS_CONFIG.size() > 0, "Atleast one entry in SIZE_CLASS_CONFIG required.");
-
-    static constexpr size_t MAX_CACHED_SLABS = 4;
-    static constexpr size_t NUM_SIZE_CLASSES = std::size(SIZE_CLASS_CONFIG);
-
-    // all size classes are cached via TLC
-    static constexpr size_t NUM_CACHED_CLASSES = NUM_SIZE_CLASSES;
-
-    // per class batch sizes. smaller objects get larger batches, larger objects get smaller batches
-    static constexpr std::array<size_t, 10> BATCH_SIZES = {
-        64, // 8B
-        64, // 16B
-        32, // 32B
-        32, // 64B
-        16, // 128B
-        16, // 256B
-        8,  // 512B
-        8,  // 1024B
-        4,  // 2048B
-        4,  // 4096B
-    };
-    static_assert(BATCH_SIZES.size() == NUM_SIZE_CLASSES);
-    static_assert(NUM_CACHED_CLASSES <= NUM_SIZE_CLASSES,
-                  "The number of cached classes must be lower than the amount of size classes available. "
-                  "Either decrease the cached classes or increase total number of size classes.");
+    constexpr static size_t MAX_CACHED_SLABS = 4;
 
     struct cache_entry
     {
         size_t epoch;
-        slab* owner;
-        std::array<thread_local_cache, slab::NUM_CACHED_CLASSES> storage;
+        slab<Tconfig>* owner;
+        std::array<thread_local_cache, Tconfig::NUM_CACHED_CLASSES> storage;
 
         void flush()
         {
             if (!owner)
                 return; // should we assert?
 
-            for (size_t i = 0; i < NUM_CACHED_CLASSES; i++)
+            for (size_t i = 0; i < Tconfig::NUM_CACHED_CLASSES; i++)
             {
                 // move pointers to appropriate pool from storage?
                 auto& cache = storage[i];
@@ -175,12 +203,12 @@ private:
             if (!owner)
                 return;
 
-            for (size_t i = 0; i < NUM_CACHED_CLASSES; i++)
+            for (size_t i = 0; i < Tconfig::NUM_CACHED_CLASSES; i++)
                 storage[i].invalidate();
         }
     };
 
-    thread_local static std::array<cache_entry, MAX_CACHED_SLABS> caches;
+    inline thread_local static std::array<cache_entry, MAX_CACHED_SLABS> caches{};
 
     cache_entry* get_cached_slab()
     {
@@ -228,15 +256,194 @@ private:
 
     static void init_cache_batch_sizes(cache_entry& entry)
     {
-        for (size_t i = 0; i < NUM_CACHED_CLASSES; ++i)
-            entry.storage[i].batch_size = BATCH_SIZES[i];
+        for (size_t i = 0; i < Tconfig::NUM_CACHED_CLASSES; ++i)
+            entry.storage[i].batch_size = Tconfig::SIZE_CLASS_CONFIG[i].batch_size;
     }
 
     std::atomic<size_t> epoch;
-    std::array<pool, NUM_SIZE_CLASSES> shared_pools;
+    std::array<pool, Tconfig::NUM_SIZE_CLASSES> shared_pools;
 
-    static std::atomic<size_t> next_slab_id;
+    inline static std::atomic<size_t> next_slab_id{0};
     size_t slab_id;
 };
+
+template<typename Tconfig>
+slab<Tconfig>::slab() : epoch(0), slab_id(next_slab_id.fetch_add(1, std::memory_order_relaxed))
+{
+    for (size_t i = 0; i < Tconfig::NUM_SIZE_CLASSES; i++)
+    {
+        auto& sc = Tconfig::SIZE_CLASS_CONFIG[i];
+        shared_pools[i].init(sc.byte_size, sc.num_blocks);
+    }
+}
+
+template<typename Tconfig>
+slab<Tconfig>::~slab()
+{
+    const size_t preferred = slab_id % MAX_CACHED_SLABS;
+    if (caches[preferred].owner == this)
+    {
+        caches[preferred].invalidate_all();
+        caches[preferred].owner = nullptr;
+        return;
+    }
+    for (size_t i = 0; i < MAX_CACHED_SLABS; ++i)
+    {
+        if (i == preferred)
+            continue;
+        if (caches[i].owner == this)
+        {
+            caches[i].invalidate_all();
+            caches[i].owner = nullptr;
+            return;
+        }
+    }
+}
+
+template<typename Tconfig>
+void* slab<Tconfig>::alloc(size_t size)
+{
+    if (size == 0 || size == (size_t)-1)
+        return nullptr;
+    if (Tconfig::SIZE_CLASS_CONFIG[Tconfig::NUM_SIZE_CLASSES - 1].byte_size < size)
+        return nullptr;
+
+    size_t index = size_to_index(size);
+    if (index == (size_t)-1)
+        return nullptr;
+
+    pool& p = shared_pools[index];
+
+    if (index < Tconfig::NUM_CACHED_CLASSES)
+    {
+        auto cached_entry = get_cached_slab();
+        thread_local_cache& cache = cached_entry->storage[index];
+        size_t current_epoch = epoch.load(std::memory_order_acquire);
+        if (cached_entry->epoch != current_epoch)
+        {
+            cached_entry->invalidate_all();
+            cached_entry->epoch = current_epoch;
+        }
+
+        if (auto elem = cache.try_pop())
+            return elem;
+
+        size_t num_allocated = p.alloc_batched_internal(cache.batch_size, cache.objects.data());
+        cache.current = num_allocated;
+        return cache.try_pop();
+    }
+    else
+    {
+        return p.alloc();
+    }
+}
+
+template<typename Tconfig>
+void* slab<Tconfig>::calloc(size_t size)
+{
+    void* ptr = alloc(size);
+    if (ptr != nullptr)
+    {
+        size_t actual_size = Tconfig::SIZE_CLASS_CONFIG[size_to_index(size)].byte_size;
+        std::memset(ptr, 0, actual_size);
+    }
+    return ptr;
+}
+
+template<typename Tconfig>
+void slab<Tconfig>::reset()
+{
+    for (auto& p : shared_pools)
+        p.reset();
+    epoch.fetch_add(1, std::memory_order_release);
+}
+
+template<typename Tconfig>
+void slab<Tconfig>::free(void* ptr, size_t size)
+{
+    if (size == 0 || size == (size_t)-1)
+        return;
+    if (Tconfig::SIZE_CLASS_CONFIG[Tconfig::NUM_SIZE_CLASSES - 1].byte_size < size)
+        return;
+
+    size_t index = size_to_index(size);
+    if (index == (size_t)-1)
+        return;
+
+    pool& p = shared_pools[index];
+    if (index < Tconfig::NUM_CACHED_CLASSES)
+    {
+        auto cached_entry = get_cached_slab();
+        thread_local_cache& cache = cached_entry->storage[index];
+        size_t current_epoch = epoch.load(std::memory_order_acquire);
+        if (cached_entry->epoch != current_epoch)
+        {
+            cached_entry->invalidate_all();
+            cached_entry->epoch = current_epoch;
+        }
+
+        if (cache.is_full())
+        {
+            p.free_batched_internal(cache.batch_size, cache.objects.data() + (cache.current - cache.batch_size));
+            cache.current -= cache.batch_size;
+        }
+        cache.push(ptr);
+    }
+    else
+    {
+        shared_pools[index].free(ptr);
+    }
+}
+
+template<typename Tconfig>
+size_t slab<Tconfig>::get_pool_count() const
+{
+    return std::size(shared_pools);
+}
+
+template<typename Tconfig>
+size_t slab<Tconfig>::get_total_capacity() const
+{
+    size_t total = 0;
+    for (const auto& p : shared_pools)
+        total += p.get_capacity();
+    return total;
+}
+
+template<typename Tconfig>
+size_t slab<Tconfig>::get_total_free() const
+{
+    size_t total = 0;
+    for (const auto& p : shared_pools)
+        total += p.get_free_space();
+    return total;
+}
+
+template<typename Tconfig>
+size_t slab<Tconfig>::get_pool_block_size(size_t index) const
+{
+    if (index >= Tconfig::NUM_SIZE_CLASSES)
+        return 0;
+    return shared_pools[index].get_block_size();
+}
+
+template<typename Tconfig>
+size_t slab<Tconfig>::get_pool_free_space(size_t index) const
+{
+    if (index >= Tconfig::NUM_SIZE_CLASSES)
+        return 0;
+    return shared_pools[index].get_free_space();
+}
+
+template<typename Tconfig>
+bool slab<Tconfig>::owns(void* ptr) const
+{
+    for (const auto& p : shared_pools)
+        if (p.owns(ptr))
+            return true;
+    return false;
+}
+
+using default_slab = slab<slab_config<>>;
 
 } // namespace AL

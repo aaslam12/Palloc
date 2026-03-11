@@ -7,6 +7,7 @@
 
 namespace AL
 {
+template<typename Tconfig>
 class slab;
 
 class alignas(std::hardware_destructive_interference_size) pool
@@ -17,6 +18,7 @@ class alignas(std::hardware_destructive_interference_size) pool
     };
 
 public:
+    template<typename Tconfig>
     friend class slab;
 
     pool();
@@ -64,8 +66,14 @@ public:
     size_t get_block_count() const;
     void clear();
 
-    std::byte* get_memory_start() const { return memory; }
-    std::byte* get_memory_end() const { return memory + capacity; }
+    std::byte* get_memory_start() const
+    {
+        return memory;
+    }
+    std::byte* get_memory_end() const
+    {
+        return memory + capacity;
+    }
 
 private:
     std::byte* memory; // pointer to the first byte of our mapped memory

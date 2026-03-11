@@ -1,45 +1,130 @@
 #pragma once
 
+#include "platform.h"
 #include <atomic>
+#include <cassert>
 #include <cstddef>
+#include <cstring>
+#include <new>
+
+#ifndef PALLOC_DEFAULT_ALIGNMENT
+#ifdef PALLOC_8BYTE_ALIGNMENT
+#define PALLOC_DEFAULT_ALIGNMENT 8
+#else
+#define PALLOC_DEFAULT_ALIGNMENT alignof(std::max_align_t) // usually 16
+#endif
+#endif
 
 namespace AL
 {
+template<size_t Talignment = PALLOC_DEFAULT_ALIGNMENT>
 class arena
 {
 public:
-    arena(size_t bytes);
-    ~arena();
+    explicit arena(size_t bytes) : memory(nullptr), used(0), capacity(0)
+    {
+        size_t page_size = AL::platform_mem::page_size();
+        capacity = ((bytes + page_size - 1) / page_size) * page_size;
+        void* ptr = AL::platform_mem::alloc(capacity);
+        if (ptr == nullptr)
+        {
+            throw std::bad_alloc();
+        }
+        memory = static_cast<std::byte*>(ptr);
+    }
+
+    ~arena()
+    {
+        if (memory != nullptr)
+        {
+            AL::platform_mem::free(memory, capacity);
+        }
+    }
+
     arena(const arena&) = delete;
     arena& operator=(const arena&) = delete;
-    arena(arena&&) noexcept;
-    arena& operator=(arena&&) noexcept;
 
-    // allocates a block of memory of specified length from the arena
-    // returns properly aligned memory
-    // returns: nullptr if failed, else the memory address of the block of memory
-    [[nodiscard]] void* alloc(size_t length);
+    arena(arena&& other) noexcept : memory(other.memory), used(other.used.load()), capacity(other.capacity)
+    {
+        other.memory = nullptr;
+        other.used = 0;
+        other.capacity = 0;
+    }
 
-    // allocates a block of memory of specified length from the arena
-    // also zeroes out the memory returned
-    // returns properly aligned memory
-    // returns: nullptr if failed, else the memory address of the block of memory
-    [[nodiscard]] void* calloc(size_t length);
+    arena& operator=(arena&& other) noexcept
+    {
+        if (this != &other)
+        {
+            if (memory != nullptr)
+            {
+                AL::platform_mem::free(memory, capacity);
+            }
+            memory = other.memory;
+            used = other.used.load();
+            capacity = other.capacity;
+            other.memory = nullptr;
+            other.used = 0;
+            other.capacity = 0;
+        }
+        return *this;
+    }
 
-    // frees the entire arena but keeps it alive to reuse
-    // NOT thread safe
-    // returns: -1 if failed
-    int reset();
+    [[nodiscard]] void* alloc(size_t length)
+    {
+        if (length == 0 || memory == nullptr)
+            return nullptr;
 
-    // unmaps all memory
-    // returns: -1 if failed
-    int clear();
+        // zero runtime overhead for calculation.
+        size_t total_to_add = (length + Talignment - 1) & ~(Talignment - 1);
+        size_t offset = used.fetch_add(total_to_add, std::memory_order_acq_rel);
 
-    // gets the amount of bytes used by the arena
-    size_t get_used() const;
+        if (offset + total_to_add > capacity)
+        {
+            return nullptr;
+        }
 
-    // gets the total amount of bytes that can be used by the arena
-    size_t get_capacity() const;
+        return memory + offset;
+    }
+
+    [[nodiscard]] void* calloc(size_t length)
+    {
+        void* ptr = alloc(length);
+        if (ptr != nullptr)
+        {
+            std::memset(ptr, 0, length);
+        }
+        return ptr;
+    }
+
+    int reset()
+    {
+        used = 0;
+        return 0;
+    }
+
+    int clear()
+    {
+        if (memory != nullptr)
+        {
+            bool ok = AL::platform_mem::free(memory, capacity);
+            memory = nullptr;
+            if (!ok)
+                return -1;
+        }
+        used.store(0);
+        capacity = 0;
+        return 0;
+    }
+
+    size_t get_used() const
+    {
+        return used.load(std::memory_order::relaxed);
+    }
+
+    size_t get_capacity() const
+    {
+        return capacity;
+    }
 
 private:
     std::byte* memory;

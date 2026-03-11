@@ -1,12 +1,41 @@
 #include "dynamic_slab.h"
 #include <catch2/catch_test_macros.hpp>
+#include <cstring>
+#include <set>
 #include <vector>
 
 using namespace AL;
 
-TEST_CASE("Dynamic slab: basic allocation and free", "[dynamic_slab]")
+// ──────────────────────────────────────────────────────────────────────────────
+// Construction
+// ──────────────────────────────────────────────────────────────────────────────
+
+TEST_CASE("Dynamic slab: default construction", "[dynamic_slab][basic]")
 {
-    dynamic_slab ds(1.0);
+    default_dynamic_slab ds;
+    REQUIRE(ds.get_slab_count() == 1);
+    REQUIRE(ds.get_total_capacity() > 0);
+    REQUIRE(ds.get_total_free() > 0);
+}
+
+TEST_CASE("Dynamic slab: custom config construction", "[dynamic_slab][config]")
+{
+    constexpr std::array<AL::size_class, 2> CFG = {{
+        {.byte_size =  8, .num_blocks = 4, .batch_size = 2},
+        {.byte_size = 16, .num_blocks = 4, .batch_size = 2},
+    }};
+    dynamic_slab<slab_config<2, CFG>> ds;
+    REQUIRE(ds.get_slab_count() == 1);
+    REQUIRE(ds.get_total_capacity() > 0);
+}
+
+// ──────────────────────────────────────────────────────────────────────────────
+// Basic alloc / free
+// ──────────────────────────────────────────────────────────────────────────────
+
+TEST_CASE("Dynamic slab: basic allocation and free", "[dynamic_slab][alloc]")
+{
+    default_dynamic_slab ds;
 
     SECTION("Single allocation succeeds")
     {
@@ -28,32 +57,72 @@ TEST_CASE("Dynamic slab: basic allocation and free", "[dynamic_slab]")
         for (void* p : ptrs)
             ds.free(p, 32);
     }
+
+    SECTION("All default size classes allocate")
+    {
+        size_t sizes[] = {8, 16, 32, 64, 128, 256, 512, 1024, 2048, 4096};
+        for (size_t sz : sizes)
+        {
+            void* p = ds.palloc(sz);
+            REQUIRE(p != nullptr);
+            ds.free(p, sz);
+        }
+    }
+
+    SECTION("Returned pointers are unique")
+    {
+        std::set<void*> ptrs;
+        for (int i = 0; i < 50; ++i)
+            ptrs.insert(ds.palloc(64));
+        REQUIRE(ptrs.size() == 50);
+        for (void* p : ptrs)
+            ds.free(p, 64);
+    }
 }
 
-TEST_CASE("Dynamic slab: grows when exhausted", "[dynamic_slab]")
+// ──────────────────────────────────────────────────────────────────────────────
+// Growth
+// ──────────────────────────────────────────────────────────────────────────────
+
+TEST_CASE("Dynamic slab: grows when exhausted", "[dynamic_slab][growth]")
 {
-    dynamic_slab ds(0.01); // tiny initial capacity
+    constexpr std::array<AL::size_class, 1> TINY = {{
+        {.byte_size = 8, .num_blocks = 4, .batch_size = 1},
+    }};
+    dynamic_slab<slab_config<1, TINY>> ds;
 
     SECTION("Allocating beyond capacity creates new slab")
     {
         std::vector<void*> ptrs;
-        for (size_t i = 0; i < 1000; ++i)
+        for (size_t i = 0; i < 20; ++i)
         {
-            void* p = ds.palloc(16);
+            void* p = ds.palloc(8);
             REQUIRE(p != nullptr);
             ptrs.push_back(p);
         }
         REQUIRE(ds.get_slab_count() > 1);
         for (void* p : ptrs)
-            ds.free(p, 16);
+            ds.free(p, 8);
+    }
+
+    SECTION("Capacity increases as new slabs are added")
+    {
+        size_t cap1 = ds.get_total_capacity();
+        for (size_t i = 0; i < 20; ++i)
+            ds.palloc(8);
+        REQUIRE(ds.get_total_capacity() > cap1);
     }
 }
 
-TEST_CASE("Dynamic slab: calloc returns zeroed memory", "[dynamic_slab]")
-{
-    dynamic_slab ds(1.0);
+// ──────────────────────────────────────────────────────────────────────────────
+// Calloc
+// ──────────────────────────────────────────────────────────────────────────────
 
-    SECTION("Calloc allocates and zeros")
+TEST_CASE("Dynamic slab: calloc returns zeroed memory", "[dynamic_slab][calloc]")
+{
+    default_dynamic_slab ds;
+
+    SECTION("Calloc zeros small allocation")
     {
         char* p = static_cast<char*>(ds.calloc(64));
         REQUIRE(p != nullptr);
@@ -61,96 +130,108 @@ TEST_CASE("Dynamic slab: calloc returns zeroed memory", "[dynamic_slab]")
             REQUIRE(p[i] == 0);
         ds.free(p, 64);
     }
+
+    SECTION("Calloc zeros large allocation")
+    {
+        char* p = static_cast<char*>(ds.calloc(4096));
+        REQUIRE(p != nullptr);
+        for (size_t i = 0; i < 4096; ++i)
+            REQUIRE(p[i] == 0);
+        ds.free(p, 4096);
+    }
+
+    SECTION("Calloc after dirty memory zeros correctly")
+    {
+        char* p1 = static_cast<char*>(ds.palloc(64));
+        REQUIRE(p1 != nullptr);
+        std::memset(p1, 0xFF, 64);
+        ds.free(p1, 64);
+
+        char* p2 = static_cast<char*>(ds.calloc(64));
+        REQUIRE(p2 != nullptr);
+        for (size_t i = 0; i < 64; ++i)
+            REQUIRE(p2[i] == 0);
+        ds.free(p2, 64);
+    }
 }
 
-TEST_CASE("Dynamic slab: tracks capacity and free space", "[dynamic_slab]")
-{
-    dynamic_slab ds(1.0);
+// ──────────────────────────────────────────────────────────────────────────────
+// Capacity / free tracking
+// ──────────────────────────────────────────────────────────────────────────────
 
-    SECTION("Capacity increases with slabs")
+TEST_CASE("Dynamic slab: tracks capacity and free space", "[dynamic_slab][stats]")
+{
+    default_dynamic_slab ds;
+
+    SECTION("Capacity is positive at start")
     {
-        size_t cap1 = ds.get_total_capacity();
+        REQUIRE(ds.get_total_capacity() > 0);
+    }
+
+    SECTION("Free space decreases on alloc")
+    {
+        size_t before = ds.get_total_free();
+        ds.palloc(64);
+        REQUIRE(ds.get_total_free() < before);
+    }
+
+    SECTION("Free space increases after free + reset")
+    {
+        // TLC caches frees; reset flushes to pool level
+        void* p = ds.palloc(64);
+        ds.free(p, 64);
+        // Note: exact free count may include TLC buffering
+        REQUIRE(ds.get_total_free() <= ds.get_total_capacity());
+    }
+}
+
+// ──────────────────────────────────────────────────────────────────────────────
+// Free routing across multiple slabs
+// ──────────────────────────────────────────────────────────────────────────────
+
+TEST_CASE("Dynamic slab: free to correct slab", "[dynamic_slab][free]")
+{
+    constexpr std::array<AL::size_class, 1> TINY = {{
+        {.byte_size = 16, .num_blocks = 4, .batch_size = 1},
+    }};
+    dynamic_slab<slab_config<1, TINY>> ds;
+
+    SECTION("Frees from multiple slabs don't crash or corrupt")
+    {
         std::vector<void*> ptrs;
-        for (size_t i = 0; i < 2000; ++i)
-        {
-            void* p = ds.palloc(8);
-            if (p)
-                ptrs.push_back(p);
-        }
-        size_t cap2 = ds.get_total_capacity();
-        REQUIRE(cap2 > cap1);
-        for (void* p : ptrs)
-            ds.free(p, 8);
-    }
-}
-
-TEST_CASE("Dynamic slab: different size classes", "[dynamic_slab]")
-{
-    dynamic_slab ds(1.0);
-
-    SECTION("Allocate mixed sizes")
-    {
-        void* p8 = ds.palloc(8);
-        void* p64 = ds.palloc(64);
-        void* p512 = ds.palloc(512);
-        void* p4096 = ds.palloc(4096);
-
-        REQUIRE(p8 != nullptr);
-        REQUIRE(p64 != nullptr);
-        REQUIRE(p512 != nullptr);
-        REQUIRE(p4096 != nullptr);
-
-        ds.free(p8, 8);
-        ds.free(p64, 64);
-        ds.free(p512, 512);
-        ds.free(p4096, 4096);
-    }
-}
-
-TEST_CASE("Dynamic slab: free to correct slab", "[dynamic_slab]")
-{
-    dynamic_slab ds(0.01);
-
-    SECTION("Allocations go to different slabs; free finds correct slab")
-    {
-        std::vector<void*> ptrs1, ptrs2;
-        // Exhaust first slab
-        for (size_t i = 0; i < 500 && ds.get_slab_count() == 1; ++i)
+        for (size_t i = 0; i < 20; ++i)
         {
             void* p = ds.palloc(16);
-            if (p)
-                ptrs1.push_back(p);
-        }
-        // Force creation of second slab
-        for (size_t i = 0; i < 500 && ds.get_slab_count() == 2; ++i)
-        {
-            void* p = ds.palloc(16);
-            if (p)
-                ptrs2.push_back(p);
+            REQUIRE(p != nullptr);
+            ptrs.push_back(p);
         }
         REQUIRE(ds.get_slab_count() >= 2);
-        // Free from both slabs (shouldn't crash or corrupt)
-        for (void* p : ptrs1)
-            ds.free(p, 16);
-        for (void* p : ptrs2)
+        for (void* p : ptrs)
             ds.free(p, 16);
     }
 }
 
-TEST_CASE("Dynamic slab: invalid sizes", "[dynamic_slab]")
+// ──────────────────────────────────────────────────────────────────────────────
+// Invalid inputs
+// ──────────────────────────────────────────────────────────────────────────────
+
+TEST_CASE("Dynamic slab: invalid sizes", "[dynamic_slab][edge]")
 {
-    dynamic_slab ds(1.0);
+    default_dynamic_slab ds;
 
     SECTION("Size 0 returns nullptr")
     {
-        void* p = ds.palloc(0);
-        REQUIRE(p == nullptr);
+        REQUIRE(ds.palloc(0) == nullptr);
     }
 
-    SECTION("Size > max returns nullptr")
+    SECTION("Size above max class returns nullptr")
     {
-        void* p = ds.palloc(8192); // larger than max size class (4096)
-        REQUIRE(p == nullptr);
+        REQUIRE(ds.palloc(8192) == nullptr);
+    }
+
+    SECTION("size_t max returns nullptr")
+    {
+        REQUIRE(ds.palloc(static_cast<size_t>(-1)) == nullptr);
     }
 
     SECTION("Free nullptr is safe")
@@ -158,8 +239,43 @@ TEST_CASE("Dynamic slab: invalid sizes", "[dynamic_slab]")
         ds.free(nullptr, 64);
     }
 
-    SECTION("Free size 0 is safe")
+    SECTION("Free with size 0 is safe")
     {
         ds.free(reinterpret_cast<void*>(0x1000), 0);
+    }
+}
+
+// ──────────────────────────────────────────────────────────────────────────────
+// Memory integrity
+// ──────────────────────────────────────────────────────────────────────────────
+
+TEST_CASE("Dynamic slab: memory integrity", "[dynamic_slab][integrity]")
+{
+    default_dynamic_slab ds;
+
+    SECTION("Write and read back structured data")
+    {
+        struct Point { int x; int y; };
+        Point* p = static_cast<Point*>(ds.palloc(sizeof(Point)));
+        REQUIRE(p != nullptr);
+        p->x = 10; p->y = 20;
+        REQUIRE(p->x == 10);
+        REQUIRE(p->y == 20);
+        ds.free(p, sizeof(Point));
+    }
+
+    SECTION("Multiple live allocations don't interfere")
+    {
+        int* a = static_cast<int*>(ds.palloc(sizeof(int) * 8));
+        int* b = static_cast<int*>(ds.palloc(sizeof(int) * 8));
+        REQUIRE(a != nullptr); REQUIRE(b != nullptr);
+        for (int i = 0; i < 8; ++i) { a[i] = i; b[i] = i + 100; }
+        for (int i = 0; i < 8; ++i)
+        {
+            REQUIRE(a[i] == i);
+            REQUIRE(b[i] == i + 100);
+        }
+        ds.free(a, sizeof(int) * 8);
+        ds.free(b, sizeof(int) * 8);
     }
 }

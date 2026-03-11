@@ -52,7 +52,7 @@ struct platform_mem
         GetSystemInfo(&info);
         return static_cast<std::size_t>(info.dwPageSize);
 #else
-        return static_cast<std::size_t>(getpagesize());
+        return static_cast<std::size_t>(sysconf(_SC_PAGESIZE));
 #endif
     }
 };
