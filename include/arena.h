@@ -71,14 +71,14 @@ public:
 
     [[nodiscard]] void* alloc(size_t length)
     {
-        if (length == 0 || memory == nullptr)
+        if (length == 0 || length > capacity || memory == nullptr)
             return nullptr;
 
         // zero runtime overhead for calculation.
         size_t total_to_add = (length + Talignment - 1) & ~(Talignment - 1);
         size_t offset = used.fetch_add(total_to_add, std::memory_order_acq_rel);
 
-        if (offset + total_to_add > capacity)
+        if (offset >= capacity || total_to_add > capacity - offset)
         {
             return nullptr;
         }
@@ -98,7 +98,7 @@ public:
 
     int reset()
     {
-        used = 0;
+        used.store(0, std::memory_order_relaxed);
         return 0;
     }
 
