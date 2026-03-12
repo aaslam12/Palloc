@@ -3,11 +3,9 @@
 #include <bit>
 #include <cassert>
 #include <cstddef>
-#include <cstdlib>
 #include <cstring>
 #include <iostream>
 #include <mutex>
-#include <new>
 
 namespace AL
 {
@@ -22,8 +20,7 @@ pool::pool(size_t block_size, size_t block_count) : pool()
 }
 
 pool::pool(pool&& other) noexcept
-    : memory(other.memory), capacity(other.capacity), free_count(other.free_count.load()), block_size(other.block_size),
-      block_count(other.block_count), free_list(other.free_list)
+    : m_region(other.m_region), m_region_size(other.m_region_size), m_view(other.m_view), m_free_count(other.m_free_count.load())
 {
     other.clear();
 }
@@ -33,17 +30,13 @@ pool& pool::operator=(pool&& other) noexcept
     if (this == &other)
         return *this;
 
-    if (memory != nullptr)
-    {
-        AL::platform_mem::free(memory, capacity);
-    }
+    if (m_region != nullptr)
+        AL::platform_mem::free(m_region, m_region_size);
 
-    memory = other.memory;
-    capacity = other.capacity;
-    free_count.store(other.free_count.load());
-    block_size = other.block_size;
-    block_count = other.block_count;
-    free_list = other.free_list;
+    m_region = other.m_region;
+    m_region_size = other.m_region_size;
+    m_view = other.m_view;
+    m_free_count.store(other.m_free_count.load());
 
     other.clear();
     return *this;
@@ -51,13 +44,8 @@ pool& pool::operator=(pool&& other) noexcept
 
 void pool::init(size_t block_size, size_t block_count)
 {
-    assert(this->memory == nullptr && "pool likely already initialized correctly.");
-    assert(this->capacity == (size_t)-1 && "pool likely already initialized correctly.");
-    assert(this->free_count == (size_t)-1 && "pool likely already initialized correctly.");
-    assert(this->block_size == (size_t)-1 && "pool likely already initialized correctly.");
-    assert(this->block_count == (size_t)-1 && "pool likely already initialized correctly.");
+    assert(m_region == nullptr && "pool likely already initialized correctly.");
 
-    size_t page_size = AL::platform_mem::page_size();
     if (block_size < sizeof(void*))
     {
 #if PALLOC_DEBUG
@@ -67,217 +55,153 @@ void pool::init(size_t block_size, size_t block_count)
         block_size = sizeof(void*);
     }
 
-    this->block_size = std::bit_ceil(block_size);
-    this->block_count = block_count;
+    block_size = std::bit_ceil(block_size);
 
-    // round up to next page boundary
-    size_t total_needed = this->block_size * this->block_count;
-    capacity = ((total_needed + page_size - 1) / page_size) * page_size;
+    size_t page_size = AL::platform_mem::page_size();
+    size_t region_needed = pool_view::required_region_size(block_size, block_count);
+    m_region_size = ((region_needed + page_size - 1) / page_size) * page_size;
 
-    // currently, any pool we create, uses atleast one page of memory.
-    // we can optimize this to allow a function to pass in the address where we should mmap
-    // or just reuse an already existing mmap
-    void* ptr = AL::platform_mem::alloc(capacity);
-
+    void* ptr = AL::platform_mem::alloc(m_region_size);
     if (ptr == nullptr)
-    {
         throw std::bad_alloc();
-    }
 
-    memory = static_cast<std::byte*>(ptr);
-    init_free_list();
-    free_count = block_count;
-}
-
-void pool::init_free_list()
-{
-    free_list = nullptr;
-
-    // Loop backwards through block indices
-    for (size_t i = block_count; i > 0; --i)
-    {
-        // Get pointer to block (i-1)
-        std::byte* block_ptr = memory + ((i - 1) * block_size);
-
-        // Cast to FreeNode and link
-        free_node* node = reinterpret_cast<free_node*>(block_ptr);
-        node->next = free_list;
-        free_list = node;
-    }
+    m_region = static_cast<std::byte*>(ptr);
+    m_view.init_from_region(m_region, block_size, block_count);
+    m_free_count.store(block_count, std::memory_order_relaxed);
 }
 
 pool::~pool()
 {
-    if (memory == nullptr)
+    if (m_region == nullptr)
         return;
 
-    // frees free list as well
-    bool freed = AL::platform_mem::free(memory, capacity);
+    bool freed = AL::platform_mem::free(m_region, m_region_size);
 
 #if PALLOC_DEBUG
     if (!freed)
-    {
         std::cerr << "WARNING: munmap failed in pool destructor\n";
-    }
-#endif // PALLOC_DEBUG
+#endif
 
-    memory = nullptr;
-    free_list = nullptr;
+    m_region = nullptr;
 }
 
 void* pool::alloc()
 {
-    std::lock_guard<std::mutex> lock(alloc_free_mutex);
-    if (free_list == nullptr)
-        return nullptr;
-
+    std::lock_guard<std::mutex> lock(m_mutex);
     check_asserts();
 
-    auto temp = free_list;
-    free_list = free_list->next;
-    free_count--;
-
-    return temp;
+    void* ptr = m_view.alloc();
+    if (ptr != nullptr)
+        m_free_count.fetch_sub(1, std::memory_order_relaxed);
+    return ptr;
 }
 
 size_t pool::alloc_batched_internal(size_t num_objects, void* out[])
 {
-    std::lock_guard<std::mutex> lock(alloc_free_mutex);
-    if (!out || !free_list)
+    std::lock_guard<std::mutex> lock(m_mutex);
+    if (!out)
         return 0;
 
     check_asserts();
 
     size_t i = 0;
-    for (; i < num_objects; i++)
+    for (; i < num_objects; ++i)
     {
-        if (free_list == nullptr)
-            return i;
-
-        free_node* temp = free_list;
-        free_list = free_list->next;
-        free_count--;
-        out[i] = temp;
+        void* ptr = m_view.alloc();
+        if (ptr == nullptr)
+            break;
+        m_free_count.fetch_sub(1, std::memory_order_relaxed);
+        out[i] = ptr;
     }
-
     return i;
 }
 
 void* pool::calloc()
 {
     void* ptr = alloc();
-
     if (ptr != nullptr)
-    {
-        // dont need a lock here since only the calling thread has access to this pointer
-        std::memset(ptr, 0, block_size);
-    }
-
+        std::memset(ptr, 0, m_view.block_size());
     return ptr;
 }
 
 void pool::reset()
 {
-    std::lock_guard<std::mutex> lock(alloc_free_mutex);
-
+    std::lock_guard<std::mutex> lock(m_mutex);
     check_asserts();
-    init_free_list();
-    free_count = block_count;
+    m_view.reset();
+    m_free_count.store(m_view.block_count(), std::memory_order_relaxed);
 }
 
 void pool::clear()
 {
-    free_count = -1;
-    block_size = -1;
-    block_count = -1;
-    capacity = -1;
-    free_list = nullptr;
-    memory = nullptr;
+    m_region = nullptr;
+    m_region_size = 0;
+    m_view = pool_view{};
+    m_free_count.store(0, std::memory_order_relaxed);
 }
 
 bool pool::owns(void* ptr) const
 {
-    std::byte* byte_ptr = static_cast<std::byte*>(ptr);
-
-    if (byte_ptr < memory || byte_ptr >= (memory + capacity))
-        return false;
-
-    size_t offset = byte_ptr - memory;
-    return (offset & (block_size - 1)) == 0;
+    return m_view.owns(ptr);
 }
 
 void pool::free(void* ptr)
 {
-    std::lock_guard<std::mutex> lock(alloc_free_mutex);
+    std::lock_guard<std::mutex> lock(m_mutex);
     if (ptr == nullptr)
         return;
 
     check_asserts();
-
     assert(owns(ptr) && "Pointer does not belong to this pool");
 
-    free_node* node = static_cast<free_node*>(ptr);
-    node->next = free_list;
-    free_list = node;
-
-    free_count++;
+    m_view.free(ptr);
+    m_free_count.fetch_add(1, std::memory_order_relaxed);
 }
 
 void pool::free_batched_internal(size_t num_objects, void* in[])
 {
-    std::lock_guard<std::mutex> lock(alloc_free_mutex);
+    std::lock_guard<std::mutex> lock(m_mutex);
     if (!in)
         return;
 
     check_asserts();
 
-    for (size_t i = 0; i < num_objects; i++)
+    for (size_t i = 0; i < num_objects; ++i)
     {
         if (!in[i])
             continue;
 
         assert(owns(in[i]) && "Pointer does not belong to this pool");
-
-        free_node* node = static_cast<free_node*>(in[i]);
-        node->next = free_list;
-        free_list = node;
-
-        free_count++;
+        m_view.free(in[i]);
+        m_free_count.fetch_add(1, std::memory_order_relaxed);
     }
-
-    return;
 }
 
 size_t pool::get_free_space() const
 {
-    check_asserts();
-    return free_count * block_size;
+    return m_free_count.load(std::memory_order_relaxed) * m_view.block_size();
 }
 
 size_t pool::get_capacity() const
 {
-    check_asserts();
-    return capacity;
+    return m_view.capacity();
 }
 
 size_t pool::get_block_size() const
 {
-    return block_size;
+    return m_view.block_size();
 }
 
 size_t pool::get_block_count() const
 {
-    return block_count;
+    return m_view.block_count();
 }
 
 void pool::check_asserts() const
 {
 #if PALLOC_DEBUG
-    assert(memory != nullptr && "Memory is nullptr. pool likely not initialized correctly.");
-    assert(capacity != (size_t)-1 && "Capacity is invalid. pool likely not initialized correctly.");
-    assert(free_count != (size_t)-1 && "Free count is invalid. pool likely not initialized correctly.");
-    assert(block_size != (size_t)-1 && "Block size is invalid. pool likely not initialized correctly.");
-    assert(block_count != (size_t)-1 && "Block count is invalid. pool likely not initialized correctly.");
+    assert(m_view.is_initialized() && "pool not initialized correctly.");
+    assert(m_region != nullptr && "Memory region is nullptr.");
 #endif
 }
 

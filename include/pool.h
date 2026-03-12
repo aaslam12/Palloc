@@ -1,5 +1,6 @@
 #pragma once
 
+#include "pool_view.h"
 #include <atomic>
 #include <cstddef>
 #include <mutex>
@@ -12,11 +13,6 @@ class slab;
 
 class alignas(std::hardware_destructive_interference_size) pool
 {
-    struct free_node
-    {
-        free_node* next;
-    };
-
 public:
     template<typename Tconfig>
     friend class slab;
@@ -47,16 +43,14 @@ public:
 
     // frees the entire pool but keeps it alive to reuse
     // thread-safe
-    // returns: -1 if failed
     void reset();
 
     // frees the block
     // thread-safe
-    // returns: -1 if failed
     void free(void* ptr);
 
-    // already thread safe
-    // returns get number of free bytes
+    // already thread safe (atomic)
+    // returns number of free bytes
     size_t get_free_space() const;
 
     // gets the total amount of bytes that can be used by the pool
@@ -68,26 +62,21 @@ public:
 
     std::byte* get_memory_start() const
     {
-        return memory;
+        return m_view.memory_start();
     }
     std::byte* get_memory_end() const
     {
-        return memory + capacity;
+        return m_view.memory_end();
     }
 
 private:
-    std::byte* memory; // pointer to the first byte of our mapped memory
-    size_t capacity;
-    std::atomic<size_t> free_count;
-
-    size_t block_size;
-    size_t block_count;
-    free_node* free_list;
-    mutable std::mutex alloc_free_mutex;
+    std::byte* m_region = nullptr; // owned mmap'd memory
+    size_t m_region_size = 0;      // total mmap'd size (for munmap)
+    pool_view m_view;              // bitmap-based allocator (non-owning)
+    std::atomic<size_t> m_free_count{0};
+    mutable std::mutex m_mutex;
 
     bool owns(void* ptr) const;
-    void init_free_list();
-
     void check_asserts() const;
 
     size_t alloc_batched_internal(size_t num_objects, void* out[]);
