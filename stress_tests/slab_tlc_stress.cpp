@@ -41,7 +41,7 @@ int main()
     // Test 1: TLC hit rate under single-thread churn
     {
         constexpr size_t ops = 2'000'000;
-        slab s{};
+        default_slab s{};
 
         auto bench = [&](size_t size, const char* label) {
             auto t0 = std::chrono::high_resolution_clock::now();
@@ -73,7 +73,7 @@ int main()
         constexpr size_t batch_size = 128;            // TLC object_count
         constexpr size_t hold_count = batch_size + 1; // forces at least one refill
         constexpr size_t cycles = 50'000;
-        slab s{};
+        default_slab s{};
 
         std::vector<void*> held(hold_count);
 
@@ -100,7 +100,7 @@ int main()
     {
         constexpr size_t iters = 500'000;
         constexpr std::array<size_t, 10> all_sizes = {8, 16, 32, 64, 128, 256, 512, 1024, 2048, 4096};
-        slab s{};
+        default_slab s{};
 
         std::atomic<bool> start{false};
         std::atomic<size_t> total_ops{0};
@@ -144,7 +144,7 @@ int main()
     {
         constexpr size_t alloc_iters = 200'000;
         constexpr size_t reset_count = 20;
-        slab s{};
+        default_slab s{};
 
         std::atomic<bool> start{false};
         std::atomic<bool> done{false};
@@ -208,9 +208,9 @@ int main()
     {
         constexpr size_t num_slabs = 8;
         constexpr size_t iters = 100'000;
-        std::array<slab*, num_slabs> slabs;
+        std::array<default_slab*, num_slabs> slabs;
         for (auto& sp : slabs)
-            sp = new slab{};
+            sp = new default_slab{};
 
         std::atomic<bool> start{false};
         std::atomic<size_t> total_ops{0};
@@ -225,7 +225,7 @@ int main()
                 wait_for_start(start);
                 for (size_t i = 0; i < iters; ++i)
                 {
-                    slab& s = *slabs[(tid + i) % num_slabs];
+                    default_slab& s = *slabs[(tid + i) % num_slabs];
                     size_t sz = (i % 2 == 0) ? 32 : 64;
                     void* p = s.alloc(sz);
                     if (p)

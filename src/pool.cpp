@@ -92,7 +92,7 @@ void* pool::alloc()
 
     void* ptr = m_view.alloc();
     if (ptr != nullptr)
-        m_free_count.fetch_sub(1, std::memory_order_relaxed);
+        m_free_count.store(m_view.free_count(), std::memory_order_relaxed);
     return ptr;
 }
 
@@ -110,9 +110,9 @@ size_t pool::alloc_batched_internal(size_t num_objects, void* out[])
         void* ptr = m_view.alloc();
         if (ptr == nullptr)
             break;
-        m_free_count.fetch_sub(1, std::memory_order_relaxed);
         out[i] = ptr;
     }
+    m_free_count.store(m_view.free_count(), std::memory_order_relaxed);
     return i;
 }
 
@@ -155,7 +155,7 @@ void pool::free(void* ptr)
     assert(owns(ptr) && "Pointer does not belong to this pool");
 
     m_view.free(ptr);
-    m_free_count.fetch_add(1, std::memory_order_relaxed);
+    m_free_count.store(m_view.free_count(), std::memory_order_relaxed);
 }
 
 void pool::free_batched_internal(size_t num_objects, void* in[])
@@ -173,8 +173,9 @@ void pool::free_batched_internal(size_t num_objects, void* in[])
 
         assert(owns(in[i]) && "Pointer does not belong to this pool");
         m_view.free(in[i]);
-        m_free_count.fetch_add(1, std::memory_order_relaxed);
     }
+    
+    m_free_count.store(m_view.free_count(), std::memory_order_relaxed);
 }
 
 size_t pool::get_free_space() const

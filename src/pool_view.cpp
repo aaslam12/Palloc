@@ -48,7 +48,7 @@ void* pool_view::alloc() noexcept
     if (m_free_count == 0)
         return nullptr;
 
-    for (size_t w = 0; w < m_bitmap_words; ++w)
+    for (size_t w = m_hint; w < m_bitmap_words; ++w)
     {
         uint64_t word = m_bitmap[w];
         if (word == ~uint64_t(0))
@@ -62,6 +62,11 @@ void* pool_view::alloc() noexcept
 
         m_bitmap[w] |= (uint64_t(1) << bit);
         --m_free_count;
+
+        // advance hint past full words
+        if (m_bitmap[w] == ~uint64_t(0))
+            m_hint = w + 1;
+
         return m_memory + block_idx * m_block_size;
     }
 
@@ -94,6 +99,10 @@ void pool_view::free(void* ptr) noexcept
 
     m_bitmap[word_idx] &= ~(uint64_t(1) << bit_idx);
     ++m_free_count;
+
+    // pull hint back so alloc can find this word
+    if (word_idx < m_hint)
+        m_hint = word_idx;
 }
 
 void pool_view::free_batch(std::span<void*> ptrs) noexcept
@@ -106,6 +115,7 @@ void pool_view::reset() noexcept
 {
     std::memset(m_bitmap, 0, m_bitmap_words * sizeof(uint64_t));
     m_free_count = m_block_count;
+    m_hint = 0;
 }
 
 size_t pool_view::free_count() const noexcept

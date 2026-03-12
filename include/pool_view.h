@@ -42,6 +42,7 @@ private:
     size_t m_block_count = 0;
     size_t m_free_count = 0;
     size_t m_bitmap_words = 0;
+    size_t m_hint = 0; // first bitmap word that may have a free bit
 };
 
 } // namespace AL
