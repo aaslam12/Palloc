@@ -88,9 +88,10 @@ typename dynamic_slab<Tconfig>::slab_node* dynamic_slab<Tconfig>::create_node(sl
     {
         auto* node = std::construct_at(static_cast<slab_node*>(mem), next_ptr);
 
-        node->value.for_each_pool_range([this, node](void* start, void* end) {
-            m_tree.insert(start, end, reinterpret_cast<size_t>(node));
-        });
+        // register the slab's contiguous pool region as a single range
+        m_tree.insert(static_cast<void*>(node->value.region_start()),
+                      static_cast<void*>(node->value.region_end()),
+                      reinterpret_cast<size_t>(node));
 
         return node;
     }
@@ -168,7 +169,7 @@ void* dynamic_slab<Tconfig>::calloc(size_t size)
     if (ptr)
     {
         size_t index = slab<Tconfig>::size_to_index(size);
-        if (index != static_cast<size_t>(-1))
+        if (index != static_cast<size_t>(-1) && index < Tconfig::NUM_SIZE_CLASSES)
             std::memset(ptr, 0, slab<Tconfig>::index_to_size_class(index));
     }
     return ptr;
@@ -227,10 +228,9 @@ size_t dynamic_slab<Tconfig>::shrink()
             // slab is completely empty — unlink and reclaim
             prev->next = next;
 
-            // remove radix tree entries for this node
-            node->value.for_each_pool_range([this](void* start, void* end) {
-                m_tree.remove(start, end);
-            });
+            // remove radix tree entry for this node's contiguous region
+            m_tree.remove(static_cast<void*>(node->value.region_start()),
+                          static_cast<void*>(node->value.region_end()));
 
             node->~slab_node();
             AL::platform_mem::free(node, sizeof(slab_node));

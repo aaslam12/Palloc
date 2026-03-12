@@ -22,12 +22,13 @@ void pool_view::init_from_region(void* base, size_t block_size, size_t block_cou
     assert(block_size > 0 && std::has_single_bit(block_size) && "block_size must be a power of 2");
     assert(block_size >= sizeof(void*) && "block_size must be at least sizeof(void*)");
     assert(block_count > 0 && "block_count must be positive");
-    assert((reinterpret_cast<uintptr_t>(base) % alignof(uint64_t)) == 0 && "base must be aligned to at least alignof(uint64_t)");
+    assert((reinterpret_cast<uintptr_t>(base) % block_size) == 0 && "base must be aligned to at least block_size");
 
     m_block_size = block_size;
     m_block_count = block_count;
     m_free_count = block_count;
     m_bitmap_words = (block_count + 63) / 64;
+    m_hint = 0;
 
     m_bitmap = static_cast<uint64_t*>(base);
     std::memset(m_bitmap, 0, m_bitmap_words * sizeof(uint64_t));

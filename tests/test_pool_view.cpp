@@ -22,6 +22,12 @@ static void* aligned_base(std::vector<std::byte>& buf, size_t alignment)
     return std::align(alignment, 1, ptr, space);
 }
 
+// Convenience: align to block_size (the required minimum for pool_view)
+static void* block_aligned_base(std::vector<std::byte>& buf, size_t block_size)
+{
+    return aligned_base(buf, block_size);
+}
+
 TEST_CASE("pool_view: required_region_size", "[pool_view]")
 {
     // 10 blocks of 64 bytes: bitmap = ceil(10/64) = 1 word = 8 bytes
@@ -44,7 +50,7 @@ TEST_CASE("pool_view: required_region_size", "[pool_view]")
 TEST_CASE("pool_view: init and diagnostics", "[pool_view]")
 {
     auto buf = make_region(64, 10);
-    void* base = aligned_base(buf, alignof(uint64_t));
+    void* base = block_aligned_base(buf, 64);
     REQUIRE(base != nullptr);
 
     AL::pool_view view;
@@ -64,7 +70,7 @@ TEST_CASE("pool_view: init and diagnostics", "[pool_view]")
 TEST_CASE("pool_view: single alloc and free", "[pool_view]")
 {
     auto buf = make_region(64, 10);
-    void* base = aligned_base(buf, alignof(uint64_t));
+    void* base = block_aligned_base(buf, 64);
     AL::pool_view view;
     view.init_from_region(base, 64, 10);
 
@@ -83,7 +89,7 @@ TEST_CASE("pool_view: single alloc and free", "[pool_view]")
 TEST_CASE("pool_view: freed block can be reallocated", "[pool_view]")
 {
     auto buf = make_region(64, 10);
-    void* base = aligned_base(buf, alignof(uint64_t));
+    void* base = block_aligned_base(buf, 64);
     AL::pool_view view;
     view.init_from_region(base, 64, 10);
 
@@ -96,7 +102,7 @@ TEST_CASE("pool_view: freed block can be reallocated", "[pool_view]")
 TEST_CASE("pool_view: allocate all blocks then exhaust", "[pool_view]")
 {
     auto buf = make_region(64, 10);
-    void* base = aligned_base(buf, alignof(uint64_t));
+    void* base = block_aligned_base(buf, 64);
     AL::pool_view view;
     view.init_from_region(base, 64, 10);
 
@@ -115,7 +121,7 @@ TEST_CASE("pool_view: allocate all blocks then exhaust", "[pool_view]")
 TEST_CASE("pool_view: calloc zeros memory", "[pool_view]")
 {
     auto buf = make_region(128, 5);
-    void* base = aligned_base(buf, alignof(uint64_t));
+    void* base = block_aligned_base(buf, 128);
     AL::pool_view view;
     view.init_from_region(base, 128, 5);
 
@@ -134,7 +140,7 @@ TEST_CASE("pool_view: calloc zeros memory", "[pool_view]")
 TEST_CASE("pool_view: reset restores all blocks", "[pool_view]")
 {
     auto buf = make_region(64, 10);
-    void* base = aligned_base(buf, alignof(uint64_t));
+    void* base = block_aligned_base(buf, 64);
     AL::pool_view view;
     view.init_from_region(base, 64, 10);
 
@@ -159,7 +165,7 @@ TEST_CASE("pool_view: reset restores all blocks", "[pool_view]")
 TEST_CASE("pool_view: free_batch", "[pool_view]")
 {
     auto buf = make_region(64, 10);
-    void* base = aligned_base(buf, alignof(uint64_t));
+    void* base = block_aligned_base(buf, 64);
     AL::pool_view view;
     view.init_from_region(base, 64, 10);
 
@@ -175,7 +181,7 @@ TEST_CASE("pool_view: free_batch", "[pool_view]")
 TEST_CASE("pool_view: owns check", "[pool_view]")
 {
     auto buf = make_region(64, 10);
-    void* base = aligned_base(buf, alignof(uint64_t));
+    void* base = block_aligned_base(buf, 64);
     AL::pool_view view;
     view.init_from_region(base, 64, 10);
 
@@ -196,7 +202,7 @@ TEST_CASE("pool_view: more than 64 blocks (multi-word bitmap)", "[pool_view]")
 {
     const size_t count = 200;
     auto buf = make_region(16, count);
-    void* base = aligned_base(buf, alignof(uint64_t));
+    void* base = block_aligned_base(buf, 16);
     AL::pool_view view;
     view.init_from_region(base, 16, count);
 
@@ -225,7 +231,7 @@ TEST_CASE("pool_view: block count not multiple of 64", "[pool_view]")
     // 65 blocks — last bitmap word has only 1 valid bit
     const size_t count = 65;
     auto buf = make_region(32, count);
-    void* base = aligned_base(buf, alignof(uint64_t));
+    void* base = block_aligned_base(buf, 32);
     AL::pool_view view;
     view.init_from_region(base, 32, count);
 
@@ -243,7 +249,7 @@ TEST_CASE("pool_view: block count not multiple of 64", "[pool_view]")
 TEST_CASE("pool_view: memory writes don't corrupt bitmap", "[pool_view]")
 {
     auto buf = make_region(64, 10);
-    void* base = aligned_base(buf, alignof(uint64_t));
+    void* base = block_aligned_base(buf, 64);
     AL::pool_view view;
     view.init_from_region(base, 64, 10);
 
@@ -273,7 +279,7 @@ TEST_CASE("pool_view: memory writes don't corrupt bitmap", "[pool_view]")
 TEST_CASE("pool_view: free nullptr is safe", "[pool_view]")
 {
     auto buf = make_region(64, 10);
-    void* base = aligned_base(buf, alignof(uint64_t));
+    void* base = block_aligned_base(buf, 64);
     AL::pool_view view;
     view.init_from_region(base, 64, 10);
 

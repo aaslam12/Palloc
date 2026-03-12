@@ -70,6 +70,16 @@ void pool::init(size_t block_size, size_t block_count)
     m_free_count.store(block_count, std::memory_order_relaxed);
 }
 
+void pool::init_from_region(void* base, size_t block_size, size_t block_count)
+{
+    assert(!m_view.is_initialized() && "pool likely already initialized");
+    assert(m_region == nullptr && "pool already owns memory");
+
+    // non-owning: m_region stays nullptr so destructor won't munmap
+    m_view.init_from_region(base, block_size, block_count);
+    m_free_count.store(block_count, std::memory_order_relaxed);
+}
+
 pool::~pool()
 {
     if (m_region == nullptr)
@@ -202,7 +212,6 @@ void pool::check_asserts() const
 {
 #if PALLOC_DEBUG
     assert(m_view.is_initialized() && "pool not initialized correctly.");
-    assert(m_region != nullptr && "Memory region is nullptr.");
 #endif
 }
 

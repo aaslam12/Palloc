@@ -28,6 +28,11 @@ public:
 
     void init(size_t block_size, size_t block_count);
 
+    // non-owning initialization: the pool does not mmap or own the memory.
+    // the caller (typically slab) is responsible for the lifetime of the region.
+    // base must be aligned to at least block_size.
+    void init_from_region(void* base, size_t block_size, size_t block_count);
+
     // allocates a block of memory from the pool
     // returns properly aligned memory
     // thread-safe

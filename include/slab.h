@@ -1,5 +1,6 @@
 #pragma once
 
+#include "platform.h"
 #include "pool.h"
 #include <array>
 #include <atomic>
@@ -8,6 +9,7 @@
 #include <cstddef>
 #include <cstring>
 #include <limits>
+#include <new>
 
 namespace AL
 {
@@ -22,6 +24,21 @@ struct size_class
 constexpr bool is_power_of_two(std::size_t x) noexcept
 {
     return x && ((x & (x - 1)) == 0);
+}
+
+// verify size classes form a dense power-of-two sequence (no gaps).
+// e.g. {8,16,32,64} is dense; {8,32,64} is not (skips 16).
+// size_to_index assumes this for O(1) index computation.
+consteval bool is_dense_power_of_two_sequence(const auto& arr) noexcept
+{
+    if (arr.size() <= 1)
+        return true;
+    for (std::size_t i = 1; i < arr.size(); ++i)
+    {
+        if (arr[i].byte_size != arr[i - 1].byte_size * 2)
+            return false;
+    }
+    return true;
 }
 
 consteval bool is_valid_config(const auto& arr) noexcept
@@ -72,9 +89,35 @@ struct slab_config
     static_assert(is_valid_config(Tsize_class_config),
                   "Invalid SIZE_CLASS_CONFIG: power-of-two, strictly increasing sizes, non-zero counts required");
 
+    // size_to_index relies on dense power-of-two progression (8,16,32,64...).
+    // gaps (e.g. {8,32,64} skipping 16) cause index miscalculation.
+    static_assert(is_dense_power_of_two_sequence(Tsize_class_config),
+                  "SIZE_CLASS_CONFIG must be a dense power-of-two sequence (no gaps). "
+                  "e.g. {8,16,32,64} is valid; {8,32,64} (skips 16) is not.");
+
     inline static constexpr std::array<size_class, Tnum> SIZE_CLASS_CONFIG = Tsize_class_config;
     static constexpr std::size_t NUM_SIZE_CLASSES = Tnum;
     static constexpr std::size_t NUM_CACHED_CLASSES = Tnum_cached_classes;
+
+    // compute total bytes needed for all pools' sub-regions (with alignment padding).
+    // assumes page-aligned base (mmap), so first pool always starts aligned.
+    static constexpr std::size_t compute_total_region_size()
+    {
+        std::size_t total = 0;
+        for (std::size_t i = 0; i < Tnum; ++i)
+        {
+            auto const& sc = Tsize_class_config[i];
+            // align cursor to block_size
+            std::size_t mask = sc.byte_size - 1;
+            total = (total + mask) & ~mask;
+            // add region for this pool
+            std::size_t bitmap_words = (sc.num_blocks + 63) / 64;
+            std::size_t bitmap_bytes = bitmap_words * sizeof(uint64_t);
+            std::size_t aligned_offset = ((bitmap_bytes + sc.byte_size - 1) / sc.byte_size) * sc.byte_size;
+            total += aligned_offset + sc.byte_size * sc.num_blocks;
+        }
+        return total;
+    }
 };
 
 struct thread_local_cache
@@ -160,6 +203,10 @@ public:
     template<typename F>
     void for_each_pool_range(F&& callback) const;
 
+    // get the contiguous memory region backing all pools
+    std::byte* region_start() const { return m_region; }
+    std::byte* region_end() const { return m_region + m_region_size; }
+
     static constexpr size_t size_to_index(size_t size)
     {
         if (size == 0 || size > Tconfig::SIZE_CLASS_CONFIG[Tconfig::NUM_SIZE_CLASSES - 1].byte_size)
@@ -167,7 +214,10 @@ public:
         // clamp to minimum block size, round up to next power of 2, then derive index via bit width
         // e.g. size=9 → bit_ceil(16)=16 → bit_width(16)-4=1 (16B class)
         size_t s = size < Tconfig::SIZE_CLASS_CONFIG[0].byte_size ? Tconfig::SIZE_CLASS_CONFIG[0].byte_size : size;
-        return std::bit_width(std::bit_ceil(s)) - std::bit_width(Tconfig::SIZE_CLASS_CONFIG[0].byte_size);
+        size_t index = std::bit_width(std::bit_ceil(s)) - std::bit_width(Tconfig::SIZE_CLASS_CONFIG[0].byte_size);
+        if (index >= Tconfig::NUM_SIZE_CLASSES)
+            return static_cast<size_t>(-1);
+        return index;
     }
 
     static constexpr size_t index_to_size_class(size_t index)
@@ -268,6 +318,9 @@ private:
     std::atomic<size_t> epoch;
     std::array<pool, Tconfig::NUM_SIZE_CLASSES> shared_pools;
 
+    std::byte* m_region = nullptr;
+    size_t m_region_size = 0;
+
     inline static std::atomic<size_t> next_slab_id{0};
     size_t slab_id;
 };
@@ -275,33 +328,62 @@ private:
 template<typename Tconfig>
 slab<Tconfig>::slab() : epoch(0), slab_id(next_slab_id.fetch_add(1, std::memory_order_relaxed))
 {
-    for (size_t i = 0; i < Tconfig::NUM_SIZE_CLASSES; i++)
+    constexpr size_t raw_size = Tconfig::compute_total_region_size();
+    size_t page_size = AL::platform_mem::page_size();
+    m_region_size = ((raw_size + page_size - 1) / page_size) * page_size;
+
+    void* mem = AL::platform_mem::alloc(m_region_size);
+    if (mem == nullptr)
+        throw std::bad_alloc();
+
+    m_region = static_cast<std::byte*>(mem);
+
+    // carve sub-regions for each pool
+    std::byte* cursor = m_region;
+    for (size_t i = 0; i < Tconfig::NUM_SIZE_CLASSES; ++i)
     {
         auto& sc = Tconfig::SIZE_CLASS_CONFIG[i];
-        shared_pools[i].init(sc.byte_size, sc.num_blocks);
+        // align cursor to block_size
+        auto addr = reinterpret_cast<uintptr_t>(cursor);
+        uintptr_t mask = sc.byte_size - 1;
+        addr = (addr + mask) & ~mask;
+        cursor = reinterpret_cast<std::byte*>(addr);
+
+        shared_pools[i].init_from_region(cursor, sc.byte_size, sc.num_blocks);
+        cursor += pool_view::required_region_size(sc.byte_size, sc.num_blocks);
     }
 }
 
 template<typename Tconfig>
 slab<Tconfig>::~slab()
 {
+    // invalidate TLC entries for this slab
     const size_t preferred = slab_id % MAX_CACHED_SLABS;
     if (caches[preferred].owner == this)
     {
         caches[preferred].invalidate_all();
         caches[preferred].owner = nullptr;
-        return;
     }
-    for (size_t i = 0; i < MAX_CACHED_SLABS; ++i)
+    else
     {
-        if (i == preferred)
-            continue;
-        if (caches[i].owner == this)
+        for (size_t i = 0; i < MAX_CACHED_SLABS; ++i)
         {
-            caches[i].invalidate_all();
-            caches[i].owner = nullptr;
-            return;
+            if (i == preferred)
+                continue;
+            if (caches[i].owner == this)
+            {
+                caches[i].invalidate_all();
+                caches[i].owner = nullptr;
+                break;
+            }
         }
+    }
+
+    // munmap the single contiguous region (pools are non-owning, their destructors are no-ops)
+    if (m_region != nullptr)
+    {
+        AL::platform_mem::free(m_region, m_region_size);
+        m_region = nullptr;
     }
 }
 
