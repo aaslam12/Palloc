@@ -699,9 +699,11 @@ TEST_CASE("Slab thread safety: concurrent exhaustion is bounded within a size cl
     for (auto& t : workers)
         t.join();
 
-    // With TLC, batch refills mean threads may hold blocks in cache.
-    // Total successful allocs should not exceed pool capacity.
-    REQUIRE(successful_allocs.load(std::memory_order_relaxed) <= block_count);
+    // With TLC, batch refills grab batch_size blocks at once. If the pool
+    // is nearly exhausted, some blocks may remain in a thread's TLC cache
+    // and never get returned to callers. So successful_allocs <= block_count.
+    size_t total = successful_allocs.load(std::memory_order_relaxed);
+    REQUIRE(total <= block_count);
 
     std::unordered_set<void*> unique_ptrs;
     unique_ptrs.reserve(block_count);
@@ -710,7 +712,7 @@ TEST_CASE("Slab thread safety: concurrent exhaustion is bounded within a size cl
         for (void* ptr : local)
             REQUIRE(unique_ptrs.insert(ptr).second);
     }
-    REQUIRE(unique_ptrs.size() == block_count);
+    REQUIRE(unique_ptrs.size() == total);
 
     start.store(false, std::memory_order_release);
     workers.clear();

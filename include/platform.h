@@ -16,6 +16,16 @@ inline constexpr bool palloc_is_windows =
     false;
 #endif
 
+// Portable compiler hints for cold/noinline functions.
+// Keeps rarely-executed code out of the hot path's icache footprint.
+#if defined(__GNUC__) || defined(__clang__)
+#define PALLOC_COLD __attribute__((noinline, cold))
+#elif defined(_MSC_VER)
+#define PALLOC_COLD __declspec(noinline)
+#else
+#define PALLOC_COLD
+#endif
+
 namespace AL
 {
 

@@ -81,6 +81,56 @@ void radix_tree::insert(void* start, void* end, std::size_t slab_id)
     current->ranges.push_back({start_addr, end_addr, slab_id});
 }
 
+void radix_tree::remove(void* start, void* end)
+{
+    if (!start || !end || start >= end || !root)
+        return;
+
+    uintptr_t start_addr = reinterpret_cast<uintptr_t>(start);
+    uintptr_t end_addr = reinterpret_cast<uintptr_t>(end);
+    uintptr_t last_addr = end_addr - 1;
+
+    uintptr_t start_page = start_addr >> PAGE_SHIFT;
+    uintptr_t last_page = last_addr >> PAGE_SHIFT;
+
+    radix_node* current = root;
+
+    for (int level = 0; level < static_cast<int>(LEVELS); ++level)
+    {
+        uint8_t start_byte = extract_byte(start_page, level);
+        uint8_t last_byte = extract_byte(last_page, level);
+
+        if (start_byte != last_byte)
+            break;
+
+        radix_node* child = current->children[start_byte].load(std::memory_order_relaxed);
+        if (!child)
+            return;
+        current = child;
+    }
+
+    // find and remove the matching range by swapping with last entry
+    size_t count = current->range_count.load(std::memory_order_relaxed);
+    for (size_t i = 0; i < count; ++i)
+    {
+        if (current->ranges[i].start == start_addr && current->ranges[i].end == end_addr)
+        {
+            current->ranges[i] = current->ranges[count - 1];
+            current->range_count.store(count - 1, std::memory_order_release);
+            return;
+        }
+    }
+}
+
+void radix_tree::clear()
+{
+    if (root)
+    {
+        delete_tree(root);
+        root = nullptr;
+    }
+}
+
 std::size_t radix_tree::lookup(void* ptr) const
 {
     if (!ptr || !root)

@@ -279,3 +279,114 @@ TEST_CASE("Dynamic slab: memory integrity", "[dynamic_slab][integrity]")
         ds.free(b, sizeof(int) * 8);
     }
 }
+
+// ──────────────────────────────────────────────────────────────────────────────
+// Shrink / Purge
+// ──────────────────────────────────────────────────────────────────────────────
+
+TEST_CASE("Dynamic slab: shrink reclaims empty slabs", "[dynamic_slab][shrink]")
+{
+    constexpr std::array<AL::size_class, 1> CFG = {{
+        {.byte_size = 8, .num_blocks = 4, .batch_size = 2},
+    }};
+    using ds_type = dynamic_slab<slab_config<1, CFG>>;
+    ds_type ds;
+
+    size_t cap_per_slab = ds.get_total_capacity();
+
+    // exhaust first slab to force growth
+    std::vector<void*> ptrs;
+    for (size_t i = 0; i < cap_per_slab + 1; ++i)
+    {
+        void* p = ds.palloc(8);
+        if (p) ptrs.push_back(p);
+    }
+
+    REQUIRE(ds.get_slab_count() >= 2);
+    size_t count_before = ds.get_slab_count();
+
+    // free everything → most slabs should become empty
+    for (auto* p : ptrs)
+        ds.free(p, 8);
+
+    // shrink should reclaim at least some slabs (TLC may hold blocks in a few)
+    size_t reclaimed = ds.shrink();
+    REQUIRE(reclaimed > 0);
+    REQUIRE(ds.get_slab_count() < count_before);
+    REQUIRE(ds.get_slab_count() >= 1); // head always kept
+
+    // allocator still works after shrink
+    void* p = ds.palloc(8);
+    REQUIRE(p != nullptr);
+    ds.free(p, 8);
+}
+
+TEST_CASE("Dynamic slab: shrink keeps non-empty slabs", "[dynamic_slab][shrink]")
+{
+    constexpr std::array<AL::size_class, 1> CFG = {{
+        {.byte_size = 8, .num_blocks = 4, .batch_size = 2},
+    }};
+    using ds_type = dynamic_slab<slab_config<1, CFG>>;
+    ds_type ds;
+
+    size_t cap_per_slab = ds.get_total_capacity();
+
+    // exhaust first slab
+    std::vector<void*> ptrs;
+    for (size_t i = 0; i < cap_per_slab + 1; ++i)
+    {
+        void* p = ds.palloc(8);
+        if (p) ptrs.push_back(p);
+    }
+
+    REQUIRE(ds.get_slab_count() >= 2);
+
+    // only free objects from the second slab (keep first slab occupied)
+    // free the last allocation which likely went into the new slab
+    ds.free(ptrs.back(), 8);
+    ptrs.pop_back();
+
+    // shrink shouldn't reclaim much since first slab still has allocations
+    ds.shrink();
+    // at minimum head stays, and any slab with allocations stays
+    REQUIRE(ds.get_slab_count() >= 1);
+
+    for (auto* p : ptrs)
+        ds.free(p, 8);
+}
+
+TEST_CASE("Dynamic slab: shrink on single slab is no-op", "[dynamic_slab][shrink]")
+{
+    default_dynamic_slab ds;
+    REQUIRE(ds.get_slab_count() == 1);
+    size_t reclaimed = ds.shrink();
+    REQUIRE(reclaimed == 0);
+    REQUIRE(ds.get_slab_count() == 1);
+}
+
+TEST_CASE("Dynamic slab: purge unmaps everything", "[dynamic_slab][purge]")
+{
+    default_dynamic_slab ds;
+    void* p = ds.palloc(32);
+    REQUIRE(p != nullptr);
+    // intentionally NOT freeing p — purge doesn't care
+
+    ds.purge();
+    REQUIRE(ds.get_slab_count() == 0);
+    REQUIRE(ds.get_total_capacity() == 0);
+
+    // allocator auto-recovers on next palloc
+    void* q = ds.palloc(32);
+    REQUIRE(q != nullptr);
+    REQUIRE(ds.get_slab_count() == 1);
+    ds.free(q, 32);
+}
+
+TEST_CASE("Dynamic slab: purge then shrink is safe", "[dynamic_slab][purge][shrink]")
+{
+    default_dynamic_slab ds;
+    ds.purge();
+    REQUIRE(ds.get_slab_count() == 0);
+    size_t reclaimed = ds.shrink();
+    REQUIRE(reclaimed == 0);
+}

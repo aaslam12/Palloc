@@ -40,6 +40,18 @@ public:
     // free pointer allocated by this dynamic_slab
     void free(void* ptr, size_t size);
 
+    // reclaim empty slab pages back to the OS.
+    // NOT thread-safe — caller must ensure no concurrent alloc/free operations.
+    // keeps the head slab alive even if empty.
+    // returns: number of slabs reclaimed
+    size_t shrink();
+
+    // unmap ALL slab pages regardless of allocation state.
+    // NOT thread-safe — caller must ensure no concurrent alloc/free operations.
+    // caller is responsible for not using any previously allocated memory after this call.
+    // the dynamic_slab remains usable — next palloc() will allocate a fresh slab.
+    void purge();
+
     size_t get_total_capacity() const;
     size_t get_total_free() const;
     size_t get_slab_count() const;
@@ -57,7 +69,7 @@ private:
     // allocate and construct a new slab_node via mmap
     slab_node* create_node(slab_node* next_ptr);
 
-    __attribute__((noinline, cold)) void free_radix_fallback(void* ptr, size_t size);
+    PALLOC_COLD void free_radix_fallback(void* ptr, size_t size);
 
     std::atomic<slab_node*> head;
     std::atomic<size_t> node_count;
@@ -163,7 +175,7 @@ void* dynamic_slab<Tconfig>::calloc(size_t size)
 }
 
 template<typename Tconfig>
-__attribute__((noinline, cold)) void dynamic_slab<Tconfig>::free_radix_fallback(void* ptr, size_t size)
+PALLOC_COLD void dynamic_slab<Tconfig>::free_radix_fallback(void* ptr, size_t size)
 {
     size_t owner = m_tree.lookup(ptr);
     if (owner != 0)
@@ -190,6 +202,69 @@ void dynamic_slab<Tconfig>::free(void* ptr, size_t size)
 
     // radix tree fallback for O(1) lookup when linear scan misses
     free_radix_fallback(ptr, size);
+}
+
+template<typename Tconfig>
+size_t dynamic_slab<Tconfig>::shrink()
+{
+    std::lock_guard<std::mutex> lock(grow_mutex);
+
+    slab_node* current_head = head.load(std::memory_order_relaxed);
+    if (!current_head)
+        return 0;
+
+    size_t reclaimed = 0;
+    slab_node* prev = current_head;
+    slab_node* node = current_head->next;
+
+    // walk the list starting from second node (head is always kept)
+    while (node)
+    {
+        slab_node* next = node->next;
+
+        if (node->value.get_total_free() == node->value.get_total_capacity())
+        {
+            // slab is completely empty — unlink and reclaim
+            prev->next = next;
+
+            // remove radix tree entries for this node
+            node->value.for_each_pool_range([this](void* start, void* end) {
+                m_tree.remove(start, end);
+            });
+
+            node->~slab_node();
+            AL::platform_mem::free(node, sizeof(slab_node));
+            node_count.fetch_sub(1, std::memory_order_relaxed);
+            ++reclaimed;
+        }
+        else
+        {
+            prev = node;
+        }
+
+        node = next;
+    }
+
+    return reclaimed;
+}
+
+template<typename Tconfig>
+void dynamic_slab<Tconfig>::purge()
+{
+    std::lock_guard<std::mutex> lock(grow_mutex);
+
+    slab_node* current = head.load(std::memory_order_relaxed);
+    while (current)
+    {
+        slab_node* next = current->next;
+        current->~slab_node();
+        AL::platform_mem::free(current, sizeof(slab_node));
+        current = next;
+    }
+
+    head.store(nullptr, std::memory_order_release);
+    node_count.store(0, std::memory_order_relaxed);
+    m_tree.clear();
 }
 
 template<typename Tconfig>
