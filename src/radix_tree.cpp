@@ -88,10 +88,6 @@ std::size_t radix_tree::lookup(void* ptr) const
         return 0;
 
     uintptr_t addr = reinterpret_cast<uintptr_t>(ptr);
-
-    // Walk root → leaf, checking ranges stored at each node.
-    // A matching range must be stored at some ancestor along this path.
-    // O(LEVELS) = O(8) = O(1).
     radix_node* current = root;
 
     for (int level = 0; level < static_cast<int>(LEVELS); ++level)
