@@ -200,14 +200,15 @@ TEST_CASE("RadixTree: Real heap addresses", "[radix_tree][heap]")
 {
     AL::radix_tree rt;
 
+    // Use a single large allocation with gaps to avoid contiguous-block ambiguity
     const size_t ALLOC_SIZE = 4096;
-    void* block1 = std::malloc(ALLOC_SIZE);
-    void* block2 = std::malloc(ALLOC_SIZE);
-    void* block3 = std::malloc(ALLOC_SIZE);
+    void* big = std::malloc(ALLOC_SIZE * 6);
+    REQUIRE(big != nullptr);
 
-    REQUIRE(block1 != nullptr);
-    REQUIRE(block2 != nullptr);
-    REQUIRE(block3 != nullptr);
+    auto* base = static_cast<std::byte*>(big);
+    void* block1 = base;                  // [0, 4096)
+    void* block2 = base + ALLOC_SIZE * 2; // [8192, 12288)  gap at [4096, 8192)
+    void* block3 = base + ALLOC_SIZE * 4; // [16384, 20480) gap at [12288, 16384)
 
     uintptr_t b1 = reinterpret_cast<uintptr_t>(block1);
     uintptr_t b2 = reinterpret_cast<uintptr_t>(block2);
@@ -231,16 +232,16 @@ TEST_CASE("RadixTree: Real heap addresses", "[radix_tree][heap]")
         REQUIRE(rt.lookup(addr(b3 + ALLOC_SIZE - 1)) == 3);
     }
 
-    SECTION("Lookup past end of each block returns 0")
+    SECTION("Lookup in gaps between blocks returns 0")
     {
         REQUIRE(rt.lookup(addr(b1 + ALLOC_SIZE)) == 0);
+        REQUIRE(rt.lookup(addr(b1 + ALLOC_SIZE + 100)) == 0);
         REQUIRE(rt.lookup(addr(b2 + ALLOC_SIZE)) == 0);
+        REQUIRE(rt.lookup(addr(b2 + ALLOC_SIZE + 100)) == 0);
         REQUIRE(rt.lookup(addr(b3 + ALLOC_SIZE)) == 0);
     }
 
-    std::free(block1);
-    std::free(block2);
-    std::free(block3);
+    std::free(big);
 }
 
 TEST_CASE("RadixTree: Distinct slab IDs are preserved", "[radix_tree][basic]")
