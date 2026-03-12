@@ -68,7 +68,7 @@ int main()
         for (size_t sz : sizes)
         {
             // Palloc
-            slab ps{};
+            default_slab ps{};
             auto t0 = std::chrono::high_resolution_clock::now();
             for (size_t i = 0; i < ops; ++i)
             {
@@ -129,7 +129,7 @@ int main()
         std::vector<void*> ptrs(batch);
 
         // Palloc
-        slab ps{};
+        default_slab ps{};
         auto t0 = std::chrono::high_resolution_clock::now();
         for (size_t c = 0; c < cycles; ++c)
         {
@@ -206,7 +206,7 @@ int main()
             print_row(label, ns_per_op(elapsed.count(), ops), throughput(elapsed.count(), ops));
         };
 
-        slab ps{};
+        default_slab ps{};
         run_mt("Palloc  ", [&] { return ps.alloc(sz); }, [&](void* p) { ps.free(p, sz); });
         run_mt("jemalloc", [&] { return mallocx(sz, 0); }, [](void* p) { dallocx(p, 0); });
         run_mt("malloc  ", [&] { return std::malloc(sz); }, [](void* p) { std::free(p); });
@@ -250,7 +250,7 @@ int main()
             print_row(label, ns_per_op(elapsed.count(), ops), throughput(elapsed.count(), ops));
         };
 
-        slab ps{};
+        default_slab ps{};
         run_mixed("Palloc  ", [&](size_t sz) { return ps.alloc(sz); }, [&](void* p, size_t sz) { ps.free(p, sz); });
         run_mixed("jemalloc", [](size_t sz) { return mallocx(sz, 0); }, [](void* p, size_t) { dallocx(p, 0); });
         run_mixed("malloc  ", [](size_t sz) { return std::malloc(sz); }, [](void* p, size_t) { std::free(p); });

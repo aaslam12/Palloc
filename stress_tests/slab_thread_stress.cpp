@@ -75,7 +75,7 @@ int main()
             4096,
         };
 
-        slab s{};
+        default_slab s{};
         const size_t initial_total_free = s.get_total_free();
         std::atomic<bool> start{false};
         std::atomic<size_t> null_allocations{0};
@@ -138,7 +138,7 @@ int main()
     {
         const size_t contention_threads = std::max<size_t>(threads, SIZE_CLASSES.size());
         const size_t iterations_per_thread = 10000000;
-        slab s{};
+        default_slab s{};
 
         std::array<size_t, SIZE_CLASSES.size()> initial_pool_free{};
         for (size_t i = 0; i < SIZE_CLASSES.size(); ++i)
@@ -206,7 +206,7 @@ int main()
     {
         constexpr size_t class_index = 0; // 8-byte class
         constexpr size_t request_size = 8;
-        slab s{};
+        default_slab s{};
 
         const size_t block_size = s.get_pool_block_size(class_index);
         const size_t block_count = s.get_pool_free_space(class_index) / block_size;
@@ -313,7 +313,7 @@ int main()
     }
 
     std::cout << "========================================" << '\n';
-    std::cout << "[PASSED] All slab threaded stress tests passed!" << '\n';
+    std::cout << "[PASSED] All default_slab threaded stress tests passed!" << '\n';
     std::cout << "========================================\n" << '\n';
     return 0;
 }

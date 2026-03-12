@@ -12,7 +12,7 @@ int main()
     const int RAPID_CYCLES = 10000000; // 1M rapid cycles (was 10K)
 
     std::cout << "\n=== Slab Allocator Stress Test ===" << '\n';
-    std::cout << "Testing slab allocator under various stress patterns\n" << '\n';
+    std::cout << "Testing default_slab allocator under various stress patterns\n" << '\n';
 
     // ========================================================================
     // Test 1: Many cycles with mixed sizes
@@ -23,7 +23,7 @@ int main()
         std::cout << "Allocs per cycle: " << ALLOCS_PER_CYCLE << '\n';
         std::cout << "Sizes:            32, 64, 128, 256 bytes (rotating)" << '\n';
 
-        AL::slab s;
+        AL::default_slab s;
         size_t initial_free = s.get_total_free();
 
         auto start = std::chrono::high_resolution_clock::now();
@@ -89,7 +89,7 @@ int main()
         std::cout << "Size:        64 bytes" << '\n';
         std::cout << "Pattern:     Allocate immediately followed by free" << '\n';
 
-        AL::slab s;
+        AL::default_slab s;
         size_t initial_free = s.get_total_free();
 
         auto start = std::chrono::high_resolution_clock::now();
@@ -136,7 +136,7 @@ int main()
     }
 
     std::cout << "========================================" << '\n';
-    std::cout << "[PASSED] All slab stress tests passed!" << '\n';
+    std::cout << "[PASSED] All default_slab stress tests passed!" << '\n';
     std::cout << "========================================\n" << '\n';
 
     return 0;

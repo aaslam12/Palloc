@@ -28,7 +28,7 @@ int main()
         // Test with Slab
         {
             std::cout << "\n[Testing Slab]" << '\n';
-            AL::slab s{};
+            AL::default_slab s{};
 
             auto start = std::chrono::high_resolution_clock::now();
 
@@ -167,7 +167,7 @@ int main()
         // Test with Slab
         {
             std::cout << "\n[Testing Slab]" << '\n';
-            AL::slab s{};
+            AL::default_slab s{};
 
             auto start = std::chrono::high_resolution_clock::now();
 
@@ -244,7 +244,7 @@ int main()
         // Test with Slab
         {
             std::cout << "\n[Testing Slab]" << '\n';
-            AL::slab s{};
+            AL::default_slab s{};
 
             auto start = std::chrono::high_resolution_clock::now();
 
@@ -325,7 +325,7 @@ int main()
         // Test with Slab (use larger scale for this test)
         {
             std::cout << "\n[Testing Slab]" << '\n';
-            AL::slab s{}; // Large scale to handle 10K batch with 25% being 128-byte (2.5K blocks needed)
+            AL::default_slab s{}; // Large scale to handle 10K batch with 25% being 128-byte (2.5K blocks needed)
 
             auto start = std::chrono::high_resolution_clock::now();
 
@@ -453,7 +453,7 @@ int main()
     }
 
     std::cout << "========================================" << '\n';
-    std::cout << "[PASSED] All slab vs malloc tests passed!" << '\n';
+    std::cout << "[PASSED] All default_slab vs malloc tests passed!" << '\n';
     std::cout << "========================================" << '\n';
 
     return 0;
