@@ -32,6 +32,12 @@ void pool_view::init_from_region(void* base, size_t block_size, size_t block_cou
     m_bitmap = static_cast<uint64_t*>(base);
     std::memset(m_bitmap, 0, m_bitmap_words * sizeof(uint64_t));
 
+    // mark trailing bits beyond m_block_count as allocated so the hint
+    // can advance past the last word when all valid blocks are used
+    size_t tail = m_block_count % 64;
+    if (tail != 0)
+        m_bitmap[m_bitmap_words - 1] = ~uint64_t(0) << tail;
+
     // align payload to block_size
     size_t bitmap_bytes = m_bitmap_words * sizeof(uint64_t);
     void* payload_ptr = static_cast<std::byte*>(base) + bitmap_bytes;
@@ -54,7 +60,7 @@ void* pool_view::alloc() noexcept
         if (word == ~uint64_t(0))
             continue; // all bits set (all allocated)
 
-        size_t bit = static_cast<size_t>(__builtin_ctzll(~word));
+        size_t bit = static_cast<size_t>(std::countr_zero(static_cast<uint64_t>(~word)));
         size_t block_idx = w * 64 + bit;
 
         if (block_idx >= m_block_count)
@@ -95,9 +101,13 @@ void pool_view::free(void* ptr) noexcept
     size_t word_idx = block_idx / 64;
     size_t bit_idx = block_idx % 64;
 
-    assert((m_bitmap[word_idx] & (uint64_t(1) << bit_idx)) != 0 && "double free: block is not currently allocated");
+    uint64_t mask = uint64_t(1) << bit_idx;
+    assert((m_bitmap[word_idx] & mask) != 0 && "double free: block is not currently allocated");
 
-    m_bitmap[word_idx] &= ~(uint64_t(1) << bit_idx);
+    if (!(m_bitmap[word_idx] & mask))
+        return; // block already free — no-op to prevent state corruption
+
+    m_bitmap[word_idx] &= ~mask;
     ++m_free_count;
 
     // pull hint back so alloc can find this word
@@ -114,6 +124,11 @@ void pool_view::free_batch(std::span<void*> ptrs) noexcept
 void pool_view::reset() noexcept
 {
     std::memset(m_bitmap, 0, m_bitmap_words * sizeof(uint64_t));
+
+    size_t tail = m_block_count % 64;
+    if (tail != 0)
+        m_bitmap[m_bitmap_words - 1] = ~uint64_t(0) << tail;
+
     m_free_count = m_block_count;
     m_hint = 0;
 }
@@ -148,7 +163,7 @@ bool pool_view::owns(const void* ptr) const noexcept
         return false;
 
     size_t offset = static_cast<size_t>(byte_ptr - m_memory);
-    return (offset % m_block_size) == 0;
+    return (offset & (m_block_size - 1)) == 0;
 }
 
 bool pool_view::is_initialized() const noexcept
