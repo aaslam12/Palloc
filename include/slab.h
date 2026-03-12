@@ -156,6 +156,10 @@ public:
     // check if pointer belongs to this slab
     bool owns(void* ptr) const;
 
+    // iterate over each pool's [memory_start, memory_end) range
+    template<typename F>
+    void for_each_pool_range(F&& callback) const;
+
     static constexpr size_t size_to_index(size_t size)
     {
         if (size == 0 || size > Tconfig::SIZE_CLASS_CONFIG[Tconfig::NUM_SIZE_CLASSES - 1].byte_size)
@@ -443,6 +447,18 @@ bool slab<Tconfig>::owns(void* ptr) const
         if (p.owns(ptr))
             return true;
     return false;
+}
+
+template<typename Tconfig>
+template<typename F>
+void slab<Tconfig>::for_each_pool_range(F&& callback) const
+{
+    for (const auto& p : shared_pools)
+    {
+        auto* start = p.get_memory_start();
+        if (start != nullptr)
+            callback(static_cast<void*>(start), static_cast<void*>(p.get_memory_end()));
+    }
 }
 
 using default_slab = slab<slab_config<>>;

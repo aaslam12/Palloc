@@ -70,7 +70,6 @@ void radix_tree::insert(void* start, void* end, std::size_t slab_id)
         current = current->children[start_byte];
     }
 
-    // update existing range or append new one
     for (auto& range : current->ranges)
     {
         if (range.start == start_addr && range.end == end_addr)

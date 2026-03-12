@@ -1,6 +1,7 @@
 #pragma once
 
 #include "platform.h"
+#include "radix_tree.h"
 #include "slab.h"
 #include <atomic>
 #include <cstddef>
@@ -56,9 +57,12 @@ private:
     // allocate and construct a new slab_node via mmap
     slab_node* create_node(slab_node* next_ptr);
 
+    __attribute__((noinline, cold)) void free_radix_fallback(void* ptr, size_t size);
+
     std::atomic<slab_node*> head;
     std::atomic<size_t> node_count;
     std::mutex grow_mutex; // only held when adding a new slab
+    radix_tree m_tree;
 };
 
 template<typename Tconfig>
@@ -70,9 +74,13 @@ typename dynamic_slab<Tconfig>::slab_node* dynamic_slab<Tconfig>::create_node(sl
 
     try
     {
-        // uses placement new. initializes the object at the given address 'mem'.
-        // this acts as a constructor call on existing memory and does NOT allocate new memory.
-        return std::construct_at(static_cast<slab_node*>(mem), next_ptr);
+        auto* node = std::construct_at(static_cast<slab_node*>(mem), next_ptr);
+
+        node->value.for_each_pool_range([this, node](void* start, void* end) {
+            m_tree.insert(start, end, reinterpret_cast<size_t>(node));
+        });
+
+        return node;
     }
     catch (...)
     {
@@ -155,13 +163,22 @@ void* dynamic_slab<Tconfig>::calloc(size_t size)
 }
 
 template<typename Tconfig>
+__attribute__((noinline, cold)) void dynamic_slab<Tconfig>::free_radix_fallback(void* ptr, size_t size)
+{
+    size_t owner = m_tree.lookup(ptr);
+    if (owner != 0)
+    {
+        reinterpret_cast<slab_node*>(owner)->value.free(ptr, size);
+    }
+}
+
+template<typename Tconfig>
 void dynamic_slab<Tconfig>::free(void* ptr, size_t size)
 {
     if (ptr == nullptr || size == 0 || size == static_cast<size_t>(-1))
         return;
 
-    // lock free traversal
-    // find owning slab, then call its thread-safe free
+    // lock-free traversal — linear scan is fastest for typical 1-3 slab cases
     for (slab_node* node = head.load(std::memory_order_acquire); node; node = node->next)
     {
         if (node->value.owns(ptr))
@@ -170,6 +187,9 @@ void dynamic_slab<Tconfig>::free(void* ptr, size_t size)
             return;
         }
     }
+
+    // radix tree fallback for O(1) lookup when linear scan misses
+    free_radix_fallback(ptr, size);
 }
 
 template<typename Tconfig>
