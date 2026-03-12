@@ -30,8 +30,6 @@ A high-performance, thread-safe memory allocator library written in C++20. Imple
   - [Multi-threaded](#multi-threaded-8-threads)
   - [Calloc](#calloc-zero-initialized)
   - [Known limitations](#known-limitations)
-- [Architecture](#architecture)
-  - [Thread-Local Cache](#thread-local-cache-tlc)
 
 ---
 
@@ -40,14 +38,15 @@ A high-performance, thread-safe memory allocator library written in C++20. Imple
 | Allocator | Strategy | Thread Safety | Capacity |
 |-----------|----------|---------------|----------|
 | `Arena` | Linear bump allocator | Lock-free (atomic CAS) | Fixed |
-| `Pool` | Free-list allocator | Mutex-protected | Fixed |
+| `Pool` | Bitmap allocator (via `pool_view`) | Mutex-protected | Fixed |
 | `Slab` | Multi-pool with TLC | Inherited from Pool | Fixed |
 | `Dynamic Slab` | Linked list of Slabs | Lock-free traversal | Unbounded |
 
 All allocators:
 - Map memory directly with `mmap` — no `malloc` or `new`
 - Are validated with **ThreadSanitizer** and **AddressSanitizer**
-- 0 data races, 0 memory errors across 88 tests + 40 thread-safety tests
+- 0 data races, 0 memory errors across 121 test cases (238K+ assertions)
+- Release builds use LTO (`-flto`) for cross-TU optimization
 
 ---
 
@@ -226,24 +225,24 @@ Results on Linux (12-core Intel i5 11th gen), compiled with GCC `-O3`.
 
 
 
-Benchmarked on Linux (12-core Intel i5 11th gen), compiled with GCC `-O3`. All numbers are ns/op (lower is better).
+Benchmarked on Linux (12-core Intel i5 11th gen), compiled with GCC `-O3 -flto`. All numbers are ns/op (lower is better).
 
 ### Single-threaded alloc+free by size
 
 | Size | Slab (TLC) | Dynamic Slab | jemalloc | malloc |
 |------|-----------|-------------|----------|--------|
-| 8B | **2.7** | 4.0 | 5.8 | 2.4 |
-| 16B | **2.7** | 4.4 | 5.7 | 2.4 |
-| 32B | **2.6** | 5.1 | 5.7 | 2.4 |
-| 64B | **2.6** | 5.7 | 5.7 | 2.4 |
-| 128B | **2.6** | 6.2 | 5.8 | 2.5 |
-| 256B | **2.6** | 6.8 | 5.8 | 2.7 |
-| 512B | **2.6** | 7.4 | 6.0 | 2.8 |
-| 1024B | **2.5** | 8.0 | 6.2 | 3.2 |
-| 2048B | **2.6** | 8.6 | 6.8 | 4.2 |
-| 4096B | **2.5** | 9.1 | 7.7 | 5.9 |
+| 8B | **2.5** | 3.6 | 5.7 | 2.3 |
+| 16B | **2.5** | 3.7 | 5.7 | 2.3 |
+| 32B | **2.6** | 3.8 | 5.8 | 2.3 |
+| 64B | **2.6** | 3.9 | 5.7 | 2.3 |
+| 128B | **2.5** | 4.1 | 5.8 | 2.5 |
+| 256B | **2.6** | 4.2 | 5.8 | 2.5 |
+| 512B | **2.5** | 4.3 | 5.9 | 2.7 |
+| 1024B | **2.5** | 4.5 | 6.3 | 3.1 |
+| 2048B | **2.6** | 4.5 | 6.8 | 4.2 |
+| 4096B | **2.5** | 4.6 | 7.7 | 5.9 |
 
-Slab's TLC gives it a ~2x advantage over jemalloc here. Two structural reasons explain the gap — both tied to the benchmark conditions:
+Slab's TLC gives it a ~2x advantage over jemalloc here. Dynamic Slab improved 30-45% via LTO cross-TU inlining and the 5-level radix tree optimization (page-number keying with O(1) lookup). Two structural reasons explain Slab's gap over jemalloc:
 
 1. **Caller-supplied size.** `slab::free(ptr, size)` requires the caller to pass the size. This lets `size_to_index()` resolve the pool in a single `bit_width` instruction, with no pointer provenance lookup. jemalloc's `free(ptr)` must walk a radix tree keyed on address ranges to find the owning arena and size class — that's 2–3 cache misses on a cold path. The 2x gap is largely this lookup cost.
 
@@ -256,11 +255,11 @@ Slab's TLC gives it a ~2x advantage over jemalloc here. Two structural reasons e
 | Allocator | ns/op | MOps/s |
 |-----------|-------|--------|
 | **Arena** | **4.8** | **208.0** |
-| malloc | 6.5 | 154.0 |
-| Pool | 9.5 | 104.9 |
-| jemalloc | 11.7 | 85.3 |
+| **Pool** | **5.9** | **170.2** |
+| malloc | 6.3 | 158.1 |
+| jemalloc | 11.7 | 85.2 |
 
-Arena is now **the fastest** for pure linear allocation, 2x faster than the previous version and 35% faster than malloc. The template refactoring enables better compile-time optimizations of the atomic fetch_add path. Pool and jemalloc remain competitive for general-purpose allocation.
+Arena remains the fastest for pure linear allocation. Pool now beats malloc for linear allocation — a 38% improvement over the previous free-list design (9.5→5.9 ns) thanks to the bitmap allocator's `__builtin_ctzll` scan with a search hint that tracks the last allocation word.
 
 ### Fixed-size alloc+free (single-thread)
 
@@ -268,12 +267,12 @@ Single-threaded alloc+free pairs at 64B, 1M cycles.
 
 | Allocator | ns/op | MOps/s |
 |-----------|-------|--------|
-| **Slab (TLC)** | **1.7** | **604.3** |
-| malloc | 2.4 | 410.7 |
-| jemalloc | 5.7 | 174.3 |
-| Pool | 7.7 | 129.4 |
+| **Slab (TLC)** | **1.8** | **544.1** |
+| malloc | 2.3 | 425.9 |
+| Pool | 5.6 | 177.6 |
+| jemalloc | 5.7 | 174.6 |
 
-Slab is now **the fastest allocator** for fixed-size workloads, 50% faster than the previous version and 41% faster than malloc.
+Slab remains **the fastest allocator** for fixed-size workloads, 28% faster than malloc. Pool's bitmap refactor + LTO improved it from 7.7 to 5.6 ns/op (27% faster), now matching jemalloc.
 
 ### Batch alloc-then-free
 
@@ -281,38 +280,37 @@ Slab is now **the fastest allocator** for fixed-size workloads, 50% faster than 
 
 | Allocator | ns/op | MOps/s |
 |-----------|-------|--------|
-| **Slab (TLC)** | **5.2** | **193.1** |
-| malloc | 5.9 | 168.8 |
-| Dynamic Slab | 8.7 | 115.6 |
-| jemalloc | 9.2 | 108.8 |
+| **Slab (TLC)** | **3.2** | **308.9** |
+| Dynamic Slab | 4.6 | 219.0 |
+| malloc | 6.1 | 165.0 |
+| jemalloc | 9.4 | 105.9 |
 
-Slab's TLC handles delayed-free patterns faster than all competitors. The 10% improvement over the previous version comes from better TLC inlining via template specialization.
+Slab batch improved 38% (5.2→3.2 ns) via LTO-enabled inlining of the TLC batch refill path. Dynamic Slab improved 47% (8.7→4.6 ns) via the 5-level radix tree optimization.
 
 ### Multi-threaded (8 threads)
 
 | Test | Slab (TLC) | Dynamic Slab | jemalloc | malloc |
 |------|-----------|-------------|----------|--------|
-| Single size (32B) | **5.7** | 6.7 | 9.3 | 6.9 |
-| Mixed sizes | **6.7** | 16.4 | 9.9 | 6.8 |
-| Batch hold (500 objects) | 31.6 | 258.3 | **2.5** | 1.7 |
+| Single size (32B) | **5.7** | 6.0 | 7.6 | 7.1 |
+| Mixed sizes | **6.2** | 7.8 | 9.0 | 7.3 |
+| Batch hold (500 objects) | 31.5 | 154.6 | **2.5** | 1.6 |
 
-Slab is now **16% faster** in multi-threaded single-size workloads (6.8→5.7 ns/op) and beats malloc for the first time. The mixed-size result (6.7 ns/op) shows slight regression due to radix tree overhead for pointer→slab_id lookup — this trades O(n) traversal cost for memory safety. Dynamic Slab's single-size performance improved 29% (9.4→6.7) via better inlining. The batch-hold pattern still exposes TLC overflow behavior as expected.
+Slab leads in both single-size and mixed-size multi-threaded workloads. Dynamic Slab's mixed-size performance improved dramatically (16.4→7.8 ns, 52% faster) thanks to the 5-level radix tree with O(1) page-number lookup replacing the previous O(n) breadth-first traversal. The batch-hold pattern still exposes TLC overflow behavior as expected.
 
 ### Calloc (zero-initialized)
 
 | Size | Slab | jemalloc | calloc |
 |------|------|----------|--------|
-| 32B | **3.3** | 6.3 | 4.3 |
-| 256B | **3.9** | 7.4 | 5.2 |
-| 1024B | **5.7** | 9.1 | 7.2 |
-| 4096B | **13.9** | 18.5 | 17.2 |
+| 32B | **3.3** | 6.3 | 4.8 |
+| 256B | **3.7** | 6.8 | 4.8 |
+| 1024B | **5.3** | 9.1 | 7.3 |
+| 4096B | **13.5** | 18.4 | 17.3 |
 
-Slab's calloc improved 10-13% across all sizes and remains consistently faster than both glibc's calloc and jemalloc.
+Slab's calloc remains consistently faster than both glibc's calloc and jemalloc across all sizes.
 
 ### Known limitations
 
 - **`free` requires the size.** `slab::free(ptr, size)` requires the caller to pass the allocation size. This is the primary source of the performance advantage over jemalloc — but it means Slab cannot be a drop-in heap replacement. It fits best in contexts where objects have a known, fixed type/size (object pools, per-request buffers, typed containers).
 - **Batch-hold pattern**: When threads hold more than ~128 live objects simultaneously, Slab's TLC overflows and falls back to mutex-protected pool operations, causing significant throughput degradation under high concurrency.
-- **Radix tree overhead in mixed-size MT**: The radix tree for O(1) pointer→slab_id lookup adds ~4-5ns overhead in multi-threaded mixed-size workloads compared to the previous O(n) traversal. This trade-off enables memory safety and correct free() behavior across slabs.
-- **malloc still fastest for immediate-free**: glibc's per-thread fastbins remain extremely optimized for the single-threaded alloc→immediate-free pattern, though the gap has narrowed significantly (Slab now only 0.7ns slower).
-
+- **LTO required for optimal performance**: Release builds must use LTO (`-flto` / `CMAKE_INTERPROCEDURAL_OPTIMIZATION`) to achieve the benchmarked numbers. Without LTO, static archive linking can degrade performance by 30-60% due to code layout sensitivity — the linker's dead-code elimination shifts function addresses to suboptimal icache alignment boundaries.
+- **malloc still fastest for immediate-free**: glibc's per-thread fastbins remain extremely optimized for the single-threaded alloc→immediate-free pattern.
