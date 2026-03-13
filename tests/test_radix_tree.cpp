@@ -124,14 +124,16 @@ TEST_CASE("RadixTree: Adjacent ranges", "[radix_tree][multi]")
     }
 }
 
-TEST_CASE("RadixTree: Single byte range", "[radix_tree][edge]")
+TEST_CASE("RadixTree: Single page range", "[radix_tree][edge]")
 {
     AL::radix_tree rt;
-    rt.insert(addr(0xABCD), addr(0xABCE), 42);
+    rt.insert(addr(0xAB000), addr(0xAC000), 42);
 
-    REQUIRE(rt.lookup(addr(0xABCD)) == 42);
-    REQUIRE(rt.lookup(addr(0xABCC)) == 0);
-    REQUIRE(rt.lookup(addr(0xABCE)) == 0);
+    REQUIRE(rt.lookup(addr(0xAB000)) == 42);
+    REQUIRE(rt.lookup(addr(0xAB500)) == 42);
+    REQUIRE(rt.lookup(addr(0xABFFF)) == 42);
+    REQUIRE(rt.lookup(addr(0xAAFFF)) == 0);
+    REQUIRE(rt.lookup(addr(0xAC000)) == 0);
 }
 
 TEST_CASE("RadixTree: Large range", "[radix_tree][edge]")
@@ -146,17 +148,18 @@ TEST_CASE("RadixTree: Large range", "[radix_tree][edge]")
     REQUIRE(rt.lookup(addr(0x0FFFFFFF)) == 0);
 }
 
-TEST_CASE("RadixTree: High address values", "[radix_tree][edge]")
+TEST_CASE("RadixTree: High userspace address values", "[radix_tree][edge]")
 {
     AL::radix_tree rt;
 
-    uintptr_t high = UINTPTR_MAX - 0x1000;
-    rt.insert(addr(high), addr(high + 0x100), 99);
+    // Near top of 47-bit user-space canonical range
+    uintptr_t high = 0x00007FFFFFF00000ULL;
+    rt.insert(addr(high), addr(high + 0x10000), 99);
 
     REQUIRE(rt.lookup(addr(high)) == 99);
-    REQUIRE(rt.lookup(addr(high + 0x50)) == 99);
-    REQUIRE(rt.lookup(addr(high + 0xFF)) == 99);
-    REQUIRE(rt.lookup(addr(high + 0x100)) == 0);
+    REQUIRE(rt.lookup(addr(high + 0x5000)) == 99);
+    REQUIRE(rt.lookup(addr(high + 0xFFFF)) == 99);
+    REQUIRE(rt.lookup(addr(high + 0x10000)) == 0);
     REQUIRE(rt.lookup(addr(high - 1)) == 0);
 }
 
@@ -196,27 +199,27 @@ TEST_CASE("RadixTree: Many ranges", "[radix_tree][multi]")
     }
 }
 
-TEST_CASE("RadixTree: Real heap addresses", "[radix_tree][heap]")
+TEST_CASE("RadixTree: Page-aligned heap blocks", "[radix_tree][heap]")
 {
     AL::radix_tree rt;
 
-    // Use a single large allocation with gaps to avoid contiguous-block ambiguity
-    const size_t ALLOC_SIZE = 4096;
-    void* big = std::malloc(ALLOC_SIZE * 6);
+    // Page-aligned allocation ensures clean page boundaries
+    const size_t PAGE = 4096;
+    void* big = std::aligned_alloc(PAGE, PAGE * 6);
     REQUIRE(big != nullptr);
 
     auto* base = static_cast<std::byte*>(big);
-    void* block1 = base;                  // [0, 4096)
-    void* block2 = base + ALLOC_SIZE * 2; // [8192, 12288)  gap at [4096, 8192)
-    void* block3 = base + ALLOC_SIZE * 4; // [16384, 20480) gap at [12288, 16384)
+    void* block1 = base;              // [page 0, page 1)
+    void* block2 = base + PAGE * 2;   // [page 2, page 3)  gap at page 1
+    void* block3 = base + PAGE * 4;   // [page 4, page 5)  gap at page 3
 
     uintptr_t b1 = reinterpret_cast<uintptr_t>(block1);
     uintptr_t b2 = reinterpret_cast<uintptr_t>(block2);
     uintptr_t b3 = reinterpret_cast<uintptr_t>(block3);
 
-    rt.insert(block1, addr(b1 + ALLOC_SIZE), 1);
-    rt.insert(block2, addr(b2 + ALLOC_SIZE), 2);
-    rt.insert(block3, addr(b3 + ALLOC_SIZE), 3);
+    rt.insert(block1, addr(b1 + PAGE), 1);
+    rt.insert(block2, addr(b2 + PAGE), 2);
+    rt.insert(block3, addr(b3 + PAGE), 3);
 
     SECTION("Lookup at start of each block")
     {
@@ -229,16 +232,16 @@ TEST_CASE("RadixTree: Real heap addresses", "[radix_tree][heap]")
     {
         REQUIRE(rt.lookup(addr(b1 + 100)) == 1);
         REQUIRE(rt.lookup(addr(b2 + 2048)) == 2);
-        REQUIRE(rt.lookup(addr(b3 + ALLOC_SIZE - 1)) == 3);
+        REQUIRE(rt.lookup(addr(b3 + PAGE - 1)) == 3);
     }
 
     SECTION("Lookup in gaps between blocks returns 0")
     {
-        REQUIRE(rt.lookup(addr(b1 + ALLOC_SIZE)) == 0);
-        REQUIRE(rt.lookup(addr(b1 + ALLOC_SIZE + 100)) == 0);
-        REQUIRE(rt.lookup(addr(b2 + ALLOC_SIZE)) == 0);
-        REQUIRE(rt.lookup(addr(b2 + ALLOC_SIZE + 100)) == 0);
-        REQUIRE(rt.lookup(addr(b3 + ALLOC_SIZE)) == 0);
+        REQUIRE(rt.lookup(addr(b1 + PAGE)) == 0);
+        REQUIRE(rt.lookup(addr(b1 + PAGE + 100)) == 0);
+        REQUIRE(rt.lookup(addr(b2 + PAGE)) == 0);
+        REQUIRE(rt.lookup(addr(b2 + PAGE + 100)) == 0);
+        REQUIRE(rt.lookup(addr(b3 + PAGE)) == 0);
     }
 
     std::free(big);
@@ -262,16 +265,18 @@ TEST_CASE("RadixTree: Addresses with varied byte patterns", "[radix_tree][edge]"
 {
     AL::radix_tree rt;
 
-    rt.insert(addr(0x00FF00FF00FF00FF), addr(0x00FF00FF00FF0FFF), 1);
-    rt.insert(addr(0xFF00FF00FF00FF00), addr(0xFF00FF00FF00FFFF), 2);
+    // Use addresses within 48-bit VA space with varied byte patterns
+    rt.insert(addr(0x0000FF00FF000000), addr(0x0000FF00FF010000), 1);
+    rt.insert(addr(0x00000F0F0F000000), addr(0x00000F0F0F010000), 2);
 
-    REQUIRE(rt.lookup(addr(0x00FF00FF00FF00FF)) == 1);
-    REQUIRE(rt.lookup(addr(0x00FF00FF00FF0500)) == 1);
-    REQUIRE(rt.lookup(addr(0xFF00FF00FF00FF00)) == 2);
-    REQUIRE(rt.lookup(addr(0xFF00FF00FF00FF80)) == 2);
+    REQUIRE(rt.lookup(addr(0x0000FF00FF000000)) == 1);
+    REQUIRE(rt.lookup(addr(0x0000FF00FF005000)) == 1);
+    REQUIRE(rt.lookup(addr(0x0000FF00FF00FFFF)) == 1);
+    REQUIRE(rt.lookup(addr(0x00000F0F0F000000)) == 2);
+    REQUIRE(rt.lookup(addr(0x00000F0F0F008000)) == 2);
 
-    REQUIRE(rt.lookup(addr(0x00FF00FF00FF0FFF)) == 0);
-    REQUIRE(rt.lookup(addr(0xFF00FF00FF00FFFF)) == 0);
+    REQUIRE(rt.lookup(addr(0x0000FF00FF010000)) == 0);
+    REQUIRE(rt.lookup(addr(0x00000F0F0F010000)) == 0);
 }
 
 TEST_CASE("RadixTree: Ranges sharing common prefix bytes", "[radix_tree][multi]")

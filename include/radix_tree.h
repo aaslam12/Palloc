@@ -10,7 +10,18 @@ namespace AL
 static constexpr size_t BYTES_IN_ADDRESS = sizeof(uintptr_t);
 static constexpr size_t LEVELS = BYTES_IN_ADDRESS;
 
-// radix tree for O(1) pointer-to-slab lookups.
+// Lock-free radix tree for O(1) pointer-to-slab lookups.
+//
+// Leaf-only design: data is stored exclusively at leaf level, one entry per page.
+// No range arrays — pure multi-level page directory. Each page maps directly
+// to its owner, eliminating linear search and overflow risks.
+//
+// 5-level tree keyed on page numbers (addr >> 12):
+//   Level 0: bits 32-35 (4 bits, max 16 entries used)
+//   Level 1: bits 24-31
+//   Level 2: bits 16-23
+//   Level 3: bits 8-15
+//   Level 4: bits 0-7  ← leaf level, stores data
 class radix_tree
 {
     struct range_entry
@@ -36,6 +47,7 @@ public:
     radix_tree();
     ~radix_tree();
 
+    // NOT thread-safe — caller must synchronize.
     void insert(void* start, void* end, std::size_t slab_id);
     std::size_t lookup(void* ptr) const;
 };

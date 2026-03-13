@@ -1,4 +1,5 @@
 #include "radix_tree.h"
+#include <cassert>
 
 namespace AL
 {
@@ -52,9 +53,6 @@ void radix_tree::insert(void* start, void* end, std::size_t slab_id)
     if (!root)
         root = new radix_node{};
 
-    // walk down using shared prefix bytes of start and last 
-    // when bytes diverge, store the range at the current node — the deepest
-    // ancestor that covers the entire range.
     radix_node* current = root;
 
     for (int level = 0; level < static_cast<int>(LEVELS); ++level)
