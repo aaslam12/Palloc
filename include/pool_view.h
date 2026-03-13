@@ -19,6 +19,11 @@ public:
     [[nodiscard]] void* alloc() noexcept;
     [[nodiscard]] void* calloc() noexcept;
 
+    // batch-allocate up to `count` blocks into out[].
+    // returns the number actually allocated (may be < count if pool has fewer free blocks).
+    // significantly faster than calling alloc() in a loop: single bitmap scan pass.
+    [[nodiscard]] size_t alloc_batch(size_t count, void* out[]) noexcept;
+
     void free(void* ptr) noexcept;
     void free_batch(std::span<void*> ptrs) noexcept;
     void reset() noexcept;
@@ -43,7 +48,8 @@ private:
     size_t m_block_count = 0;
     size_t m_free_count = 0;
     size_t m_bitmap_words = 0;
-    size_t m_hint = 0; // first bitmap word that may have a free bit
+    size_t m_hint = 0;       // first bitmap word that may have a free bit
+    size_t m_block_shift = 0; // log2(m_block_size) — used for shift-based indexing
 };
 
 } // namespace AL
