@@ -41,7 +41,7 @@ public:
     void free(void* ptr, size_t size);
 
     // reclaim empty slab pages back to the OS.
-    // NOT thread-safe — caller must ensure no concurrent alloc/free operations.
+    // NOT thread-safe - caller must ensure no concurrent alloc/free operations.
     // keeps the head slab alive even if empty.
     // returns: number of slabs reclaimed
     size_t shrink();
@@ -132,8 +132,6 @@ void* dynamic_slab<Tconfig>::palloc(size_t size)
     if (size == 0 || size == static_cast<size_t>(-1))
         return nullptr;
 
-    // lock free traversal
-    // nodes are only prepended, never removed
     for (slab_node* node = head.load(std::memory_order_acquire); node; node = node->next)
     {
         void* p = node->value.alloc(size);
@@ -191,7 +189,7 @@ void dynamic_slab<Tconfig>::free(void* ptr, size_t size)
     if (ptr == nullptr || size == 0 || size == static_cast<size_t>(-1))
         return;
 
-    // lock-free traversal — linear scan is fastest for typical 1-3 slab cases
+    // lock-free traversal — same safety note as palloc
     for (slab_node* node = head.load(std::memory_order_acquire); node; node = node->next)
     {
         if (node->value.owns(ptr))

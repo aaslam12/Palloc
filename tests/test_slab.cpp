@@ -697,3 +697,105 @@ TEST_CASE("Slab: Two slabs with different configs are independent", "[slab][isol
     REQUIRE(!sl.owns(pd));
     REQUIRE(!sd.owns(pl));
 }
+
+// ──────────────────────────────────────────────────────────────────────────────
+// Sparse (non-dense) configs
+// ──────────────────────────────────────────────────────────────────────────────
+
+constexpr std::array<AL::size_class, 2> SPARSE_CONFIG = {
+    {
+     {.byte_size = 8, .num_blocks = 64, .batch_size = 8},
+     {.byte_size = 64, .num_blocks = 64, .batch_size = 8},
+     }
+};
+using sparse_slab = AL::slab<AL::slab_config<2, SPARSE_CONFIG, 2>>;
+
+TEST_CASE("Slab: Sparse config — exact size allocation", "[slab][sparse]")
+{
+    sparse_slab s;
+    REQUIRE(s.get_pool_count() == 2);
+
+    void* p8 = s.alloc(8);
+    void* p64 = s.alloc(64);
+    REQUIRE(p8 != nullptr);
+    REQUIRE(p64 != nullptr);
+    REQUIRE(p8 != p64);
+
+    s.free(p8, 8);
+    s.free(p64, 64);
+}
+
+TEST_CASE("Slab: Sparse config — gap sizes round up", "[slab][sparse]")
+{
+    sparse_slab s;
+
+    // sizes 9-64 should all go to the 64B pool (pool index 1)
+    void* p16 = s.alloc(16);
+    void* p32 = s.alloc(32);
+    void* p48 = s.alloc(48);
+    REQUIRE(p16 != nullptr);
+    REQUIRE(p32 != nullptr);
+    REQUIRE(p48 != nullptr);
+
+    // all are from the 64B pool — verify they're 64B-aligned
+    REQUIRE((reinterpret_cast<uintptr_t>(p16) % 64) == 0);
+    REQUIRE((reinterpret_cast<uintptr_t>(p32) % 64) == 0);
+    REQUIRE((reinterpret_cast<uintptr_t>(p48) % 64) == 0);
+
+    s.free(p16, 16);
+    s.free(p32, 32);
+    s.free(p48, 48);
+}
+
+TEST_CASE("Slab: Sparse config — exhaustion and size_to_index", "[slab][sparse]")
+{
+    using config = AL::slab_config<2, SPARSE_CONFIG, 2>;
+
+    // verify LUT mapping
+    REQUIRE(config::INDEX_LUT[0] == 0); // 8B → pool 0
+    REQUIRE(config::INDEX_LUT[1] == 1); // 16B → pool 1 (64B)
+    REQUIRE(config::INDEX_LUT[2] == 1); // 32B → pool 1 (64B)
+    REQUIRE(config::INDEX_LUT[3] == 1); // 64B → pool 1 (64B)
+
+    // size_to_index
+    REQUIRE(sparse_slab::size_to_index(8) == 0);
+    REQUIRE(sparse_slab::size_to_index(16) == 1);
+    REQUIRE(sparse_slab::size_to_index(32) == 1);
+    REQUIRE(sparse_slab::size_to_index(64) == 1);
+    REQUIRE(sparse_slab::size_to_index(128) == static_cast<size_t>(-1));
+    REQUIRE(sparse_slab::size_to_index(0) == static_cast<size_t>(-1));
+}
+
+constexpr std::array<AL::size_class, 3> WIDE_SPARSE_CONFIG = {
+    {
+     {.byte_size = 8, .num_blocks = 32, .batch_size = 4},
+     {.byte_size = 128, .num_blocks = 32, .batch_size = 4},
+     {.byte_size = 4096, .num_blocks = 8, .batch_size = 2},
+     }
+};
+using wide_sparse_slab = AL::slab<AL::slab_config<3, WIDE_SPARSE_CONFIG, 3>>;
+
+TEST_CASE("Slab: Wide sparse config {8, 128, 4096}", "[slab][sparse]")
+{
+    wide_sparse_slab s;
+    REQUIRE(s.get_pool_count() == 3);
+
+    void* p8 = s.alloc(8);
+    void* p128 = s.alloc(128);
+    void* p4096 = s.alloc(4096);
+    REQUIRE(p8 != nullptr);
+    REQUIRE(p128 != nullptr);
+    REQUIRE(p4096 != nullptr);
+
+    // intermediate sizes round up
+    void* p16 = s.alloc(16);   // → 128B pool
+    void* p256 = s.alloc(256); // → 4096B pool
+    REQUIRE(p16 != nullptr);
+    REQUIRE(p256 != nullptr);
+
+    s.free(p8, 8);
+    s.free(p128, 128);
+    s.free(p4096, 4096);
+    s.free(p16, 16);
+    s.free(p256, 256);
+}

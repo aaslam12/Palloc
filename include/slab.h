@@ -26,21 +26,6 @@ constexpr bool is_power_of_two(std::size_t x) noexcept
     return x && ((x & (x - 1)) == 0);
 }
 
-// verify size classes form a dense power-of-two sequence (no gaps).
-// e.g. {8,16,32,64} is dense; {8,32,64} is not (skips 16).
-// size_to_index assumes this for O(1) index computation.
-consteval bool is_dense_power_of_two_sequence(const auto& arr) noexcept
-{
-    if (arr.size() <= 1)
-        return true;
-    for (std::size_t i = 1; i < arr.size(); ++i)
-    {
-        if (arr[i].byte_size != arr[i - 1].byte_size * 2)
-            return false;
-    }
-    return true;
-}
-
 consteval bool is_valid_config(const auto& arr) noexcept
 {
     std::size_t prev_size = 0;
@@ -89,15 +74,37 @@ struct slab_config
     static_assert(is_valid_config(Tsize_class_config),
                   "Invalid SIZE_CLASS_CONFIG: power-of-two, strictly increasing sizes, non-zero counts required");
 
-    // size_to_index relies on dense power-of-two progression (8,16,32,64...).
-    // gaps (e.g. {8,32,64} skipping 16) cause index miscalculation.
-    static_assert(is_dense_power_of_two_sequence(Tsize_class_config),
-                  "SIZE_CLASS_CONFIG must be a dense power-of-two sequence (no gaps). "
-                  "e.g. {8,16,32,64} is valid; {8,32,64} (skips 16) is not.");
-
     inline static constexpr std::array<size_class, Tnum> SIZE_CLASS_CONFIG = Tsize_class_config;
     static constexpr std::size_t NUM_SIZE_CLASSES = Tnum;
     static constexpr std::size_t NUM_CACHED_CLASSES = Tnum_cached_classes;
+
+    static constexpr std::size_t INDEX_SPAN =
+        std::bit_width(Tsize_class_config[Tnum - 1].byte_size) -
+        std::bit_width(Tsize_class_config[0].byte_size) + 1;
+
+    // gaps in the config round up to the next available size class.
+    // e.g. in config {8,64}: sizes 9-64 all go to 64B pool.
+    static consteval auto compute_index_lut()
+    {
+        std::array<std::size_t, INDEX_SPAN> lut{};
+        std::size_t min_bw = std::bit_width(Tsize_class_config[0].byte_size);
+        for (std::size_t vi = 0; vi < INDEX_SPAN; ++vi)
+        {
+            std::size_t target_size = std::size_t(1) << (min_bw + vi - 1);
+            lut[vi] = static_cast<std::size_t>(-1);
+            for (std::size_t j = 0; j < Tnum; ++j)
+            {
+                if (Tsize_class_config[j].byte_size >= target_size)
+                {
+                    lut[vi] = j;
+                    break;
+                }
+            }
+        }
+        return lut;
+    }
+
+    inline static constexpr auto INDEX_LUT = compute_index_lut();
 
     // compute total bytes needed for all pools' sub-regions (with alignment padding).
     // assumes page-aligned base (mmap), so first pool always starts aligned.
@@ -207,13 +214,11 @@ public:
     {
         if (size == 0 || size > Tconfig::SIZE_CLASS_CONFIG[Tconfig::NUM_SIZE_CLASSES - 1].byte_size)
             return static_cast<size_t>(-1);
-        // clamp to minimum block size, round up to next power of 2, then derive index via bit width
-        // e.g. size=9 → bit_ceil(16)=16 → bit_width(16)-4=1 (16B class)
         size_t s = size < Tconfig::SIZE_CLASS_CONFIG[0].byte_size ? Tconfig::SIZE_CLASS_CONFIG[0].byte_size : size;
-        size_t index = std::bit_width(std::bit_ceil(s)) - std::bit_width(Tconfig::SIZE_CLASS_CONFIG[0].byte_size);
-        if (index >= Tconfig::NUM_SIZE_CLASSES)
+        size_t vi = std::bit_width(std::bit_ceil(s)) - std::bit_width(Tconfig::SIZE_CLASS_CONFIG[0].byte_size);
+        if (vi >= Tconfig::INDEX_SPAN)
             return static_cast<size_t>(-1);
-        return index;
+        return Tconfig::INDEX_LUT[vi];
     }
 
     static constexpr size_t index_to_size_class(size_t index)

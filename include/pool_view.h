@@ -13,6 +13,7 @@ public:
     pool_view() noexcept = default;
 
     // region must hold at least required_region_size(block_size, block_count) bytes.
+    // base must be cache line aligned
     void init_from_region(void* base, size_t block_size, size_t block_count) noexcept;
 
     [[nodiscard]] void* alloc() noexcept;
