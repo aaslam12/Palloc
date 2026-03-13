@@ -40,6 +40,10 @@ public:
     // free pointer allocated by this dynamic_slab
     void free(void* ptr, size_t size);
 
+    // free pointer allocated by this dynamic_slab without knowing the size.
+    // returns true if pointer was owned by this allocator, false otherwise.
+    bool free_unsized(void* ptr);
+
     // reclaim empty slab pages back to the OS.
     // NOT thread-safe - caller must ensure no concurrent alloc/free operations.
     // keeps the head slab alive even if empty.
@@ -69,8 +73,6 @@ private:
     // allocate and construct a new slab_node via mmap
     slab_node* create_node(slab_node* next_ptr);
 
-    PALLOC_COLD void free_radix_fallback(void* ptr, size_t size);
-
     std::atomic<slab_node*> head;
     std::atomic<size_t> node_count;
     std::mutex grow_mutex; // only held when adding a new slab
@@ -89,9 +91,7 @@ typename dynamic_slab<Tconfig>::slab_node* dynamic_slab<Tconfig>::create_node(sl
         auto* node = std::construct_at(static_cast<slab_node*>(mem), next_ptr);
 
         // register the slab's contiguous pool region as a single range
-        m_tree.insert(static_cast<void*>(node->value.region_start()),
-                      static_cast<void*>(node->value.region_end()),
-                      reinterpret_cast<size_t>(node));
+        m_tree.insert(static_cast<void*>(node->value.region_start()), static_cast<void*>(node->value.region_end()), reinterpret_cast<size_t>(node));
 
         return node;
     }
@@ -174,33 +174,31 @@ void* dynamic_slab<Tconfig>::calloc(size_t size)
 }
 
 template<typename Tconfig>
-PALLOC_COLD void dynamic_slab<Tconfig>::free_radix_fallback(void* ptr, size_t size)
+void dynamic_slab<Tconfig>::free(void* ptr, size_t size)
 {
+    if (ptr == nullptr || size == 0 || size == static_cast<size_t>(-1))
+        return;
+
     size_t owner = m_tree.lookup(ptr);
-    if (owner != 0)
+    if (owner != 0) [[likely]]
     {
         reinterpret_cast<slab_node*>(owner)->value.free(ptr, size);
     }
 }
 
 template<typename Tconfig>
-void dynamic_slab<Tconfig>::free(void* ptr, size_t size)
+bool dynamic_slab<Tconfig>::free_unsized(void* ptr)
 {
-    if (ptr == nullptr || size == 0 || size == static_cast<size_t>(-1))
-        return;
+    if (ptr == nullptr)
+        return false;
 
-    // lock-free traversal — same safety note as palloc
-    for (slab_node* node = head.load(std::memory_order_acquire); node; node = node->next)
+    size_t owner = m_tree.lookup(ptr);
+    if (owner != 0)
     {
-        if (node->value.owns(ptr))
-        {
-            node->value.free(ptr, size);
-            return;
-        }
+        return reinterpret_cast<slab_node*>(owner)->value.free_unsized(ptr);
     }
 
-    // radix tree fallback for O(1) lookup when linear scan misses
-    free_radix_fallback(ptr, size);
+    return false;
 }
 
 template<typename Tconfig>
@@ -227,8 +225,7 @@ size_t dynamic_slab<Tconfig>::shrink()
             prev->next = next;
 
             // remove radix tree entry for this node's contiguous region
-            m_tree.remove(static_cast<void*>(node->value.region_start()),
-                          static_cast<void*>(node->value.region_end()));
+            m_tree.remove(static_cast<void*>(node->value.region_start()), static_cast<void*>(node->value.region_end()));
 
             node->~slab_node();
             AL::platform_mem::free(node, sizeof(slab_node));

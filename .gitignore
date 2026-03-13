@@ -1,5 +1,6 @@
 /build/
 /cmake/
+/.github/
 /.vscode/
 /.idea/
 /.cache/
@@ -11,3 +12,4 @@
 *.log
 compile_commands.json
 
+perf.data

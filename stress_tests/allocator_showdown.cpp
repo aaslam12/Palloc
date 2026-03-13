@@ -68,15 +68,14 @@ struct result
 
 void print_table_header()
 {
-    std::cout << "  " << std::left << std::setw(20) << "Allocator" << std::right << std::setw(10) << "ns/op"
-              << std::setw(12) << "MOps/s" << "\n";
+    std::cout << "  " << std::left << std::setw(20) << "Allocator" << std::right << std::setw(10) << "ns/op" << std::setw(12) << "MOps/s" << "\n";
     std::cout << "  " << std::string(42, '-') << "\n";
 }
 
 void print_row(const result& r)
 {
-    std::cout << "  " << std::left << std::setw(20) << r.label << std::right << std::setw(8) << std::fixed
-              << std::setprecision(1) << r.ns << std::setw(12) << std::setprecision(1) << r.mops << "\n";
+    std::cout << "  " << std::left << std::setw(20) << r.label << std::right << std::setw(8) << std::fixed << std::setprecision(1) << r.ns
+              << std::setw(12) << std::setprecision(1) << r.mops << "\n";
 }
 
 void print_results(std::vector<result>& results)
@@ -96,10 +95,10 @@ int main()
     const size_t threads = worker_count();
 
     std::cout << "╔══════════════════════════════════════════════════════════╗\n";
-    std::cout << "║        Allocator Showdown: Palloc vs jemalloc vs malloc ║\n";
+    std::cout << "║        Allocator Showdown: Palloc vs jemalloc vs malloc  ║\n";
     std::cout << "╠══════════════════════════════════════════════════════════╣\n";
     std::cout << "║  Threads: " << std::left << std::setw(47) << threads << "║\n";
-    std::cout << "║  Compiler: GCC -O3                                      ║\n";
+    std::cout << "║  Compiler: GCC -O3                                       ║\n";
     std::cout << "╚══════════════════════════════════════════════════════════╝\n\n";
 
     // ─────────────────────────────────────────────────────────────────────────
@@ -110,8 +109,8 @@ int main()
         constexpr size_t ops = 1'000'000;
         constexpr size_t sizes[] = {8, 16, 32, 64, 128, 256, 512, 1024, 2048, 4096};
 
-        std::cout << "  " << std::left << std::setw(8) << "Size" << std::right << std::setw(12) << "Slab"
-                  << std::setw(12) << "DynSlab" << std::setw(12) << "jemalloc" << std::setw(12) << "malloc"
+        std::cout << "  " << std::left << std::setw(8) << "Size" << std::right << std::setw(12) << "Slab" << std::setw(12) << "DynSlab"
+                  << std::setw(12) << "jemalloc" << std::setw(12) << "malloc"
                   << "  (ns/op)\n";
         std::cout << "  " << std::string(56, '-') << "\n";
 
@@ -164,8 +163,7 @@ int main()
             double mal_ns = ns_per_op(std::chrono::duration<double>(clk::now() - t0).count(), ops * 2);
 
             char line[128];
-            std::snprintf(line, sizeof(line), "  %4zuB   %8.1f    %8.1f    %8.1f    %8.1f", sz, slab_ns, dslab_ns,
-                          je_ns, mal_ns);
+            std::snprintf(line, sizeof(line), "  %4zuB   %8.1f    %8.1f    %8.1f    %8.1f", sz, slab_ns, dslab_ns, je_ns, mal_ns);
             std::cout << line << "\n";
         }
         std::cout << "\n";
@@ -426,8 +424,7 @@ int main()
         results.push_back(run_mt("Slab (TLC)", [&] { return ps.alloc(sz); }, [&](void* p) { ps.free(p, sz); }));
 
         default_dynamic_slab ds{};
-        results.push_back(
-            run_mt("Dynamic Slab", [&] { return ds.palloc(sz); }, [&](void* p) { ds.free(p, sz); }));
+        results.push_back(run_mt("Dynamic Slab", [&] { return ds.palloc(sz); }, [&](void* p) { ds.free(p, sz); }));
 
         results.push_back(run_mt("jemalloc", [] { return mallocx(sz, 0); }, [](void* p) { dallocx(p, 0); }));
         results.push_back(run_mt("malloc", [] { return std::malloc(sz); }, [](void* p) { std::free(p); }));
@@ -478,18 +475,14 @@ int main()
         };
 
         default_slab ps{};
-        results.push_back(
-            run_mixed("Slab (TLC)", [&](size_t sz) { return ps.alloc(sz); }, [&](void* p, size_t sz) { ps.free(p, sz); }));
+        results.push_back(run_mixed("Slab (TLC)", [&](size_t sz) { return ps.alloc(sz); }, [&](void* p, size_t sz) { ps.free(p, sz); }));
 
         default_dynamic_slab ds{};
-        results.push_back(
-            run_mixed("Dynamic Slab", [&](size_t sz) { return ds.palloc(sz); }, [&](void* p, size_t sz) { ds.free(p, sz); }));
+        results.push_back(run_mixed("Dynamic Slab", [&](size_t sz) { return ds.palloc(sz); }, [&](void* p, size_t sz) { ds.free(p, sz); }));
 
-        results.push_back(
-            run_mixed("jemalloc", [](size_t sz) { return mallocx(sz, 0); }, [](void* p, size_t) { dallocx(p, 0); }));
+        results.push_back(run_mixed("jemalloc", [](size_t sz) { return mallocx(sz, 0); }, [](void* p, size_t) { dallocx(p, 0); }));
 
-        results.push_back(
-            run_mixed("malloc", [](size_t sz) { return std::malloc(sz); }, [](void* p, size_t) { std::free(p); }));
+        results.push_back(run_mixed("malloc", [](size_t sz) { return std::malloc(sz); }, [](void* p, size_t) { std::free(p); }));
 
         print_results(results);
     }
@@ -548,8 +541,7 @@ int main()
         results.push_back(run_hold("Slab (TLC)", [&] { return ps.alloc(sz); }, [&](void* p) { ps.free(p, sz); }));
 
         default_dynamic_slab ds{};
-        results.push_back(
-            run_hold("Dynamic Slab", [&] { return ds.palloc(sz); }, [&](void* p) { ds.free(p, sz); }));
+        results.push_back(run_hold("Dynamic Slab", [&] { return ds.palloc(sz); }, [&](void* p) { ds.free(p, sz); }));
 
         results.push_back(run_hold("jemalloc", [] { return mallocx(sz, 0); }, [](void* p) { dallocx(p, 0); }));
         results.push_back(run_hold("malloc", [] { return std::malloc(sz); }, [](void* p) { std::free(p); }));
@@ -566,8 +558,8 @@ int main()
         constexpr size_t sizes[] = {32, 256, 1024, 4096};
         std::vector<result> results;
 
-        std::cout << "  " << std::left << std::setw(8) << "Size" << std::right << std::setw(12) << "Slab"
-                  << std::setw(12) << "jemalloc" << std::setw(12) << "calloc"
+        std::cout << "  " << std::left << std::setw(8) << "Size" << std::right << std::setw(12) << "Slab" << std::setw(12) << "jemalloc"
+                  << std::setw(12) << "calloc"
                   << "  (ns/op)\n";
         std::cout << "  " << std::string(44, '-') << "\n";
 

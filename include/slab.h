@@ -197,6 +197,9 @@ public:
     // returns: -1 if failed
     void free(void* ptr, size_t size);
 
+    // returns true if freed successfully, false if not owned by this slab
+    bool free_unsized(void* ptr);
+
     size_t get_pool_count() const;
     size_t get_total_capacity() const;
     size_t get_total_free() const;
@@ -481,6 +484,42 @@ void slab<Tconfig>::free(void* ptr, size_t size)
     {
         shared_pools[index].free(ptr);
     }
+}
+
+template<typename Tconfig>
+bool slab<Tconfig>::free_unsized(void* ptr)
+{
+    for (size_t i = 0; i < Tconfig::NUM_SIZE_CLASSES; ++i)
+    {
+        pool& p = shared_pools[i];
+        if (p.owns(ptr))
+        {
+            if (i < Tconfig::NUM_CACHED_CLASSES) [[likely]]
+            {
+                auto cached_entry = get_cached_slab();
+                thread_local_cache& cache = cached_entry->storage[i];
+                size_t current_epoch = epoch.load(std::memory_order_acquire);
+                if (cached_entry->epoch != current_epoch) [[unlikely]]
+                {
+                    cached_entry->invalidate_all();
+                    cached_entry->epoch = current_epoch;
+                }
+
+                if (cache.is_full()) [[unlikely]]
+                {
+                    p.free_batched_internal(cache.batch_size, cache.objects.data() + (cache.current - cache.batch_size));
+                    cache.current -= cache.batch_size;
+                }
+                cache.push(ptr);
+            }
+            else
+            {
+                p.free(ptr);
+            }
+            return true;
+        }
+    }
+    return false;
 }
 
 template<typename Tconfig>
