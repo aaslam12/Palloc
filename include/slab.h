@@ -391,29 +391,29 @@ slab<Tconfig>::~slab()
 template<typename Tconfig>
 void* slab<Tconfig>::alloc(size_t size)
 {
-    if (size == 0 || size == (size_t)-1)
+    if (size == 0 || size == (size_t)-1) [[unlikely]]
         return nullptr;
-    if (Tconfig::SIZE_CLASS_CONFIG[Tconfig::NUM_SIZE_CLASSES - 1].byte_size < size)
+    if (Tconfig::SIZE_CLASS_CONFIG[Tconfig::NUM_SIZE_CLASSES - 1].byte_size < size) [[unlikely]]
         return nullptr;
 
     size_t index = size_to_index(size);
-    if (index == (size_t)-1)
+    if (index == (size_t)-1) [[unlikely]]
         return nullptr;
 
     pool& p = shared_pools[index];
 
-    if (index < Tconfig::NUM_CACHED_CLASSES)
+    if (index < Tconfig::NUM_CACHED_CLASSES) [[likely]]
     {
         auto cached_entry = get_cached_slab();
         thread_local_cache& cache = cached_entry->storage[index];
         size_t current_epoch = epoch.load(std::memory_order_acquire);
-        if (cached_entry->epoch != current_epoch)
+        if (cached_entry->epoch != current_epoch) [[unlikely]]
         {
             cached_entry->invalidate_all();
             cached_entry->epoch = current_epoch;
         }
 
-        if (auto elem = cache.try_pop())
+        if (auto elem = cache.try_pop()) [[likely]]
             return elem;
 
         size_t num_allocated = p.alloc_batched_internal(cache.batch_size, cache.objects.data());
@@ -449,28 +449,28 @@ void slab<Tconfig>::reset()
 template<typename Tconfig>
 void slab<Tconfig>::free(void* ptr, size_t size)
 {
-    if (size == 0 || size == (size_t)-1)
+    if (size == 0 || size == (size_t)-1) [[unlikely]]
         return;
-    if (Tconfig::SIZE_CLASS_CONFIG[Tconfig::NUM_SIZE_CLASSES - 1].byte_size < size)
+    if (Tconfig::SIZE_CLASS_CONFIG[Tconfig::NUM_SIZE_CLASSES - 1].byte_size < size) [[unlikely]]
         return;
 
     size_t index = size_to_index(size);
-    if (index == (size_t)-1)
+    if (index == (size_t)-1) [[unlikely]]
         return;
 
     pool& p = shared_pools[index];
-    if (index < Tconfig::NUM_CACHED_CLASSES)
+    if (index < Tconfig::NUM_CACHED_CLASSES) [[likely]]
     {
         auto cached_entry = get_cached_slab();
         thread_local_cache& cache = cached_entry->storage[index];
         size_t current_epoch = epoch.load(std::memory_order_acquire);
-        if (cached_entry->epoch != current_epoch)
+        if (cached_entry->epoch != current_epoch) [[unlikely]]
         {
             cached_entry->invalidate_all();
             cached_entry->epoch = current_epoch;
         }
 
-        if (cache.is_full())
+        if (cache.is_full()) [[unlikely]]
         {
             p.free_batched_internal(cache.batch_size, cache.objects.data() + (cache.current - cache.batch_size));
             cache.current -= cache.batch_size;
