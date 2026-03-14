@@ -8,7 +8,8 @@ namespace AL
 {
 
 static constexpr size_t BYTES_IN_ADDRESS = sizeof(uintptr_t);
-static constexpr size_t LEVELS = BYTES_IN_ADDRESS;
+static constexpr size_t PAGE_SHIFT = 12;
+static constexpr size_t LEVELS = 5;
 
 // Lock-free radix tree for O(1) pointer-to-slab lookups.
 //
@@ -40,7 +41,7 @@ class radix_tree
     radix_node* root;
 
     void delete_tree(radix_node* current);
-    static uint8_t extract_byte(uintptr_t addr, int level);
+    static uint8_t extract_byte(uintptr_t page_num, int level);
     static std::size_t find_in_ranges(const std::vector<range_entry>& ranges, uintptr_t addr);
 
 public:
@@ -50,6 +51,8 @@ public:
     // NOT thread-safe — caller must synchronize.
     void insert(void* start, void* end, std::size_t slab_id);
     std::size_t lookup(void* ptr) const;
+    void remove(void* start, void* end);
+    void clear();
 };
 
 } // namespace AL

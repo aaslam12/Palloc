@@ -97,7 +97,7 @@ pool::~pool()
 
 void* pool::alloc()
 {
-    std::lock_guard<std::mutex> lock(m_mutex);
+    std::lock_guard<pool_mutex> lock(m_mutex);
     check_asserts();
 
     void* ptr = m_view.alloc();
@@ -108,7 +108,7 @@ void* pool::alloc()
 
 size_t pool::alloc_batched_internal(size_t num_objects, void* out[])
 {
-    std::lock_guard<std::mutex> lock(m_mutex);
+    std::lock_guard<pool_mutex> lock(m_mutex);
     if (!out)
         return 0;
 
@@ -136,7 +136,7 @@ void* pool::calloc()
 
 void pool::reset()
 {
-    std::lock_guard<std::mutex> lock(m_mutex);
+    std::lock_guard<pool_mutex> lock(m_mutex);
     check_asserts();
     m_view.reset();
     m_free_count.store(m_view.block_count(), std::memory_order_relaxed);
@@ -157,7 +157,7 @@ bool pool::owns(void* ptr) const
 
 void pool::free(void* ptr)
 {
-    std::lock_guard<std::mutex> lock(m_mutex);
+    std::lock_guard<pool_mutex> lock(m_mutex);
     if (ptr == nullptr)
         return;
 
@@ -170,7 +170,7 @@ void pool::free(void* ptr)
 
 void pool::free_batched_internal(size_t num_objects, void* in[])
 {
-    std::lock_guard<std::mutex> lock(m_mutex);
+    std::lock_guard<pool_mutex> lock(m_mutex);
     if (!in)
         return;
 

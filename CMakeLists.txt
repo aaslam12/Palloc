@@ -11,6 +11,7 @@ option(PALLOC_BUILD_STRESS_TESTS "Build performance stress tests" OFF)
 option(PALLOC_STATIC_LINKING "Link libraries statically" OFF)
 option(PALLOC_ENABLE_SANITIZERS "Enable Address/Undefined sanitizers (only in Debug)" OFF)
 option(PALLOC_USE_CLANG_TIDY "Run clang-tidy during builds if available" OFF)
+option(PALLOC_SINGLE_THREADED "Disable allocator mutexes for single-threaded use" OFF)
 
 if(NOT CMAKE_BUILD_TYPE)
   set(CMAKE_BUILD_TYPE "Release" CACHE STRING "Choose the type of build." FORCE)
@@ -80,6 +81,10 @@ target_link_libraries(palloc PUBLIC)
 # Define macros for build type and testing
 if(PALLOC_BUILD_TESTS)
   target_compile_definitions(palloc PUBLIC PALLOC_TESTING)
+endif()
+
+if(PALLOC_SINGLE_THREADED)
+  target_compile_definitions(palloc PUBLIC PALLOC_SINGLE_THREADED)
 endif()
 
 if(CMAKE_BUILD_TYPE STREQUAL "Debug")

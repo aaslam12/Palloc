@@ -75,7 +75,7 @@ private:
 
     std::atomic<slab_node*> head;
     std::atomic<size_t> node_count;
-    std::mutex grow_mutex; // only held when adding a new slab
+    pool_mutex grow_mutex; // only held when adding a new slab
     radix_tree m_tree;
 };
 
@@ -140,7 +140,7 @@ void* dynamic_slab<Tconfig>::palloc(size_t size)
     }
 
     // all slabs exhausted — grow under lock
-    std::lock_guard<std::mutex> lock(grow_mutex);
+    std::lock_guard<pool_mutex> lock(grow_mutex);
 
     // double check if another thread may have grown while we waited
     for (slab_node* node = head.load(std::memory_order_acquire); node; node = node->next)
@@ -204,7 +204,7 @@ bool dynamic_slab<Tconfig>::free_unsized(void* ptr)
 template<typename Tconfig>
 size_t dynamic_slab<Tconfig>::shrink()
 {
-    std::lock_guard<std::mutex> lock(grow_mutex);
+    std::lock_guard<pool_mutex> lock(grow_mutex);
 
     slab_node* current_head = head.load(std::memory_order_relaxed);
     if (!current_head)
@@ -246,7 +246,7 @@ size_t dynamic_slab<Tconfig>::shrink()
 template<typename Tconfig>
 void dynamic_slab<Tconfig>::purge()
 {
-    std::lock_guard<std::mutex> lock(grow_mutex);
+    std::lock_guard<pool_mutex> lock(grow_mutex);
 
     slab_node* current = head.load(std::memory_order_relaxed);
     while (current)

@@ -11,6 +11,18 @@ namespace AL
 template<typename Tconfig>
 class slab;
 
+#if defined(PALLOC_SINGLE_THREADED)
+struct pool_mutex
+{
+    void lock() noexcept
+    {}
+    void unlock() noexcept
+    {}
+};
+#else
+using pool_mutex = std::mutex;
+#endif
+
 class alignas(std::hardware_destructive_interference_size) pool
 {
 public:
@@ -79,7 +91,7 @@ private:
     size_t m_region_size = 0;      // total mmap'd size (for munmap)
     pool_view m_view;              // bitmap-based allocator (non-owning)
     std::atomic<size_t> m_free_count{0};
-    mutable std::mutex m_mutex;
+    mutable pool_mutex m_mutex;
 
     bool owns(void* ptr) const;
     void check_asserts() const;
