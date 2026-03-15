@@ -10,6 +10,7 @@ namespace AL
 static constexpr size_t BYTES_IN_ADDRESS = sizeof(uintptr_t);
 static constexpr size_t PAGE_SHIFT = 12;
 static constexpr size_t LEVELS = 5;
+static constexpr size_t MAX_RANGES_PER_NODE = 8;
 
 // Lock-free radix tree for O(1) pointer-to-slab lookups.
 //
@@ -22,7 +23,7 @@ static constexpr size_t LEVELS = 5;
 //   Level 1: bits 24-31
 //   Level 2: bits 16-23
 //   Level 3: bits 8-15
-//   Level 4: bits 0-7  ← leaf level, stores data
+//   Level 4: bits 0-7  <- leaf level, stores data
 class radix_tree
 {
     struct range_entry
@@ -47,6 +48,11 @@ class radix_tree
 public:
     radix_tree();
     ~radix_tree();
+
+    radix_tree(const radix_tree&) = delete;
+    radix_tree& operator=(const radix_tree&) = delete;
+    radix_tree(radix_tree&&) = delete;
+    radix_tree& operator=(radix_tree&&) = delete;
 
     // NOT thread-safe — caller must synchronize.
     void insert(void* start, void* end, std::size_t slab_id);

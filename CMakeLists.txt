@@ -143,7 +143,16 @@ if(PALLOC_BUILD_STRESS_TESTS)
   foreach(stress_src ${STRESS_SRCS})
     get_filename_component(test_name ${stress_src} NAME_WE)
     add_executable(${test_name} ${stress_src})
-    if(test_name STREQUAL "jemalloc_vs_palloc" OR test_name STREQUAL "dynamic_slab_vs_jemalloc" OR test_name STREQUAL "allocator_showdown")
+    set(JEMALLOC_STRESS_TESTS
+      jemalloc_vs_palloc
+      dynamic_slab_vs_jemalloc
+      allocator_showdown
+      order_book_sim
+      market_data_replay
+      fragmentation_stress
+      producer_consumer_sim
+    )
+    if(test_name IN_LIST JEMALLOC_STRESS_TESTS)
       if(JEMALLOC_LIB AND JEMALLOC_INCLUDE)
         target_include_directories(${test_name} PRIVATE ${JEMALLOC_INCLUDE})
         target_link_libraries(${test_name} PRIVATE palloc ${JEMALLOC_LIB})

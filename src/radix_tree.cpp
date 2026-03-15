@@ -15,8 +15,7 @@ radix_tree::~radix_tree()
 
 uint8_t radix_tree::extract_byte(uintptr_t page_num, int level)
 {
-    // 5-level page-number tree:
-    // L0 = bits 32-35 (4-bit fanout subset), L1..L4 = bits 24..0 in 8-bit chunks.
+    // L0 = bits 32-35, L1..L4 = bits 24..0 in 8-bit chunks.
     if (level == 0)
         return static_cast<uint8_t>((page_num >> 32) & 0x0F);
 
