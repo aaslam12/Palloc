@@ -1,7 +1,7 @@
 #pragma once
 
+#include "palloc_atomic.h"
 #include "pool_view.h"
-#include <atomic>
 #include <cstddef>
 #include <mutex>
 #include <new>
@@ -90,7 +90,7 @@ private:
     std::byte* m_region = nullptr; // owned mmap'd memory
     size_t m_region_size = 0;      // total mmap'd size (for munmap)
     pool_view m_view;              // bitmap-based allocator (non-owning)
-    std::atomic<size_t> m_free_count{0};
+    palloc_atomic<size_t> m_free_count{0};
     mutable pool_mutex m_mutex;
 
     bool owns(void* ptr) const;

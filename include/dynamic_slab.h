@@ -1,9 +1,9 @@
 #pragma once
 
+#include "palloc_atomic.h"
 #include "platform.h"
 #include "radix_tree.h"
 #include "slab.h"
-#include <atomic>
 #include <cstddef>
 #include <cstring>
 #include <memory>
@@ -73,8 +73,8 @@ private:
     // allocate and construct a new slab_node via mmap
     slab_node* create_node(slab_node* next_ptr);
 
-    std::atomic<slab_node*> head;
-    std::atomic<size_t> node_count;
+    palloc_atomic<slab_node*> head;
+    palloc_atomic<size_t> node_count;
     pool_mutex grow_mutex; // only held when adding a new slab
     radix_tree m_tree;
 };
@@ -143,7 +143,7 @@ void* dynamic_slab<Tconfig>::palloc(size_t size)
     std::lock_guard<pool_mutex> lock(grow_mutex);
 
     // double check if another thread may have grown while we waited
-    for (slab_node* node = head.load(std::memory_order_acquire); node; node = node->next)
+    for (slab_node* node = head.load(std::memory_order_relaxed); node; node = node->next)
     {
         void* p = node->value.alloc(size);
         if (p)

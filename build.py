@@ -34,6 +34,11 @@ def main():
         "--stress-test", action="store_true", help="Build and run stress tests"
     )
     parser.add_argument(
+        "--single-threaded",
+        action="store_true",
+        help="Build with PALLOC_SINGLE_THREADED (no-op mutexes, non-atomic counters)",
+    )
+    parser.add_argument(
         "--static", action="store_true", help="Link libraries statically"
     )
     parser.add_argument(
@@ -96,6 +101,7 @@ def main():
         f"-DPALLOC_BUILD_TESTS={'ON' if build_tests else 'OFF'}",
         f"-DPALLOC_BUILD_STRESS_TESTS={'ON' if args.stress_test else 'OFF'}",
         f"-DPALLOC_STATIC_LINKING={'ON' if args.static else 'OFF'}",
+        f"-DPALLOC_SINGLE_THREADED={'ON' if args.single_threaded else 'OFF'}",
     ]
 
     if args.asan:

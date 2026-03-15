@@ -1,7 +1,7 @@
 #pragma once
 
+#include "palloc_atomic.h"
 #include "platform.h"
-#include <atomic>
 #include <cassert>
 #include <cstddef>
 #include <cstring>
@@ -44,10 +44,10 @@ public:
     arena(const arena&) = delete;
     arena& operator=(const arena&) = delete;
 
-    arena(arena&& other) noexcept : memory(other.memory), used(other.used.load()), capacity(other.capacity)
+    arena(arena&& other) noexcept : memory(other.memory), used(other.used.load(std::memory_order_relaxed)), capacity(other.capacity)
     {
         other.memory = nullptr;
-        other.used = 0;
+        other.used.store(0, std::memory_order_relaxed);
         other.capacity = 0;
     }
 
@@ -60,10 +60,10 @@ public:
                 AL::platform_mem::free(memory, capacity);
             }
             memory = other.memory;
-            used = other.used.load();
+            used.store(other.used.load(std::memory_order_relaxed), std::memory_order_relaxed);
             capacity = other.capacity;
             other.memory = nullptr;
-            other.used = 0;
+            other.used.store(0, std::memory_order_relaxed);
             other.capacity = 0;
         }
         return *this;
@@ -76,10 +76,11 @@ public:
 
         // zero runtime overhead for calculation.
         size_t total_to_add = (length + Talignment - 1) & ~(Talignment - 1);
-        size_t offset = used.fetch_add(total_to_add, std::memory_order_acq_rel);
+        size_t offset = used.fetch_add(total_to_add, std::memory_order_relaxed);
 
         if (offset >= capacity || total_to_add > capacity - offset)
         {
+            used.fetch_sub(total_to_add, std::memory_order_relaxed);
             return nullptr;
         }
 
@@ -111,7 +112,7 @@ public:
             if (!ok)
                 return -1;
         }
-        used.store(0);
+        used.store(0, std::memory_order_relaxed);
         capacity = 0;
         return 0;
     }
@@ -128,7 +129,7 @@ public:
 
 private:
     std::byte* memory;
-    std::atomic<size_t> used;
+    palloc_atomic<size_t> used;
     size_t capacity;
 };
 } // namespace AL

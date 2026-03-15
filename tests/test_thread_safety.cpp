@@ -1,3 +1,8 @@
+// Thread-safety tests are only meaningful when synchronization is enabled.
+// With PALLOC_SINGLE_THREADED, mutexes are no-ops and atomics are plain values,
+// so multi-threaded tests would race by design.
+#if !defined(PALLOC_SINGLE_THREADED)
+
 #include "arena.h"
 #include "pool.h"
 #include "slab.h"
@@ -1953,3 +1958,5 @@ TEST_CASE("Slab thread safety: alloc-only burst then bulk free", "[slab][thread]
     for (auto& t : workers)
         t.join();
 }
+
+#endif // !defined(PALLOC_SINGLE_THREADED)

@@ -1,9 +1,9 @@
 #pragma once
 
+#include "palloc_atomic.h"
 #include "platform.h"
 #include "pool.h"
 #include <array>
-#include <atomic>
 #include <bit>
 #include <cassert>
 #include <cstddef>
@@ -319,13 +319,13 @@ private:
             entry.storage[i].batch_size = Tconfig::SIZE_CLASS_CONFIG[i].batch_size;
     }
 
-    std::atomic<size_t> epoch;
+    palloc_atomic<size_t> epoch;
     std::array<pool, Tconfig::NUM_SIZE_CLASSES> shared_pools;
 
     std::byte* m_region = nullptr;
     size_t m_region_size = 0;
 
-    inline static std::atomic<size_t> next_slab_id{0};
+    inline static palloc_atomic<size_t> next_slab_id{0};
     size_t slab_id;
 };
 
