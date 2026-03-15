@@ -22,6 +22,11 @@ A high-performance, thread-safe memory allocator library written in C++20. Imple
   - [Slab vs malloc](#slab-vs-malloc-single-thread)
   - [Arena vs malloc](#arena-vs-malloc-single-thread)
   - [Multi-threaded](#multi-threaded-12-threads)
+  - [Realistic workloads](#realistic-workload-benchmarks)
+    - [Order Book Simulation](#order-book-simulation)
+    - [Market Data Replay](#market-data-replay)
+    - [Fragmentation Stress](#fragmentation-stress)
+    - [Producer-Consumer Pipeline](#producer-consumer-pipeline)
 - [Benchmarks](#benchmarks)
   - [Single-threaded by size](#single-threaded-allocfree-by-size)
   - [Linear allocation](#linear-allocation-alloc-only-no-free)
@@ -45,7 +50,7 @@ A high-performance, thread-safe memory allocator library written in C++20. Imple
 All allocators:
 - Map memory directly with `mmap` — no `malloc` or `new`
 - Are validated with **ThreadSanitizer** and **AddressSanitizer**
-- 0 data races, 0 memory errors across 121 test cases (238K+ assertions)
+- 0 data races, 0 memory errors across 130 test cases (238K+ assertions)
 - Release builds use LTO (`-flto`) for cross-TU optimization
 
 ---
@@ -224,6 +229,108 @@ Results on Linux (12-core Intel i5 11th gen), compiled with GCC `-O3`.
 | Arena: concurrent cycles + synchronized reset (75 cycles) | **13 cycles/s** |
 
 
+
+### Realistic Workload Benchmarks
+
+These tests model real-world usage patterns. Run with:
+
+```bash
+python build.py --config Release --stress-test --build-only
+./build/Release/order_book_sim
+./build/Release/market_data_replay
+./build/Release/fragmentation_stress
+./build/Release/producer_consumer_sim
+```
+
+Results on Linux (12-core Intel i5 11th gen), GCC `-O3`. Each test run 3× for stability; averages reported.
+
+#### Order Book Simulation
+
+Fixed-size order objects (64B) with random fill/cancel/match, modelling a limit order book.
+
+**Single-threaded (ns/op):**
+
+| Allocator | ns/op | MOps/s |
+|-----------|-------|--------|
+| malloc | **70.7** | 14.1 |
+| Slab (TLC) | 71.5 | 14.0 |
+| Dynamic Slab | 75.9 | 13.2 |
+| jemalloc | 75.5 | 13.2 |
+| Pool | 79.4 | 12.6 |
+
+**Multi-threaded, 8 threads (ns/op):**
+
+| Allocator | ns/op | MOps/s |
+|-----------|-------|--------|
+| **Slab (TLC)** | **10.8** | 92.6 |
+| jemalloc | 12.3 | 81.3 |
+| malloc | 11.5 | 87.0 |
+| Pool | 304.5 | 3.3 |
+| Dynamic Slab | 234.6 | 4.3 |
+
+Slab's per-thread TLC eliminates contention in the multi-threaded path, matching jemalloc's scalability while Pool and Dynamic Slab regress severely under mutex contention.
+
+#### Market Data Replay
+
+Variable-size market messages (8–256B) parsed and forwarded, modelling a market data feed handler.
+
+| Allocator | ns/msg | MOps/s |
+|-----------|--------|--------|
+| malloc | **23.3** | 42.9 |
+| Arena (batch) | 29.5 | 33.9 |
+| jemalloc | 30.7 | 32.6 |
+| Slab (TLC) | 33.8 | 29.6 |
+| Dynamic Slab | 37.9 | 26.4 |
+
+Arena benefits from batch allocation of many same-size messages. malloc leads due to per-thread fastbin reuse across the fixed message lifecycle.
+
+#### Fragmentation Stress
+
+50K live slots, random mixed sizes (16–512B), random replacement over 10 seconds. Measures sustained throughput under heavy fragmentation.
+
+| Allocator | ns/op | p50 (ns) | p99 (ns) |
+|-----------|-------|----------|----------|
+| malloc | **61.3** | 48 | 299 |
+| jemalloc | 66.7 | 52 | 304 |
+| Dynamic Slab | ~525 | 412 | 1849 |
+
+Dynamic Slab is substantially slower under this workload because its radix tree must insert one leaf entry per page on every slab creation, and with 50K mixed-size slots it creates ~131 slab_nodes each occupying ~93 pages. Pool and Slab are excluded as they are fixed-capacity allocators not suited to unbounded mixed-size fragmentation workloads.
+
+#### Producer-Consumer Pipeline
+
+1 producer + 1 consumer thread over an SPSC ring buffer (8192 slots), 64B messages, 7 seconds each.
+
+**Throughput (ns/msg):**
+
+| Allocator | ns/msg | MOps/s |
+|-----------|--------|--------|
+| **Dynamic Slab** | **122.8** | 8.1 |
+| Slab (TLC) | 116.3 | 8.6 |
+| jemalloc | 124.8 | 8.0 |
+| malloc | 126.5 | 7.9 |
+| Pool | 361.9 | 2.8 |
+
+**Producer latency (alloc + enqueue, p50 / p99):**
+
+| Allocator | p50 (ns) | p99 (ns) |
+|-----------|----------|----------|
+| **Dynamic Slab** | **74** | 257 |
+| Pool | 231 | 901 |
+| Slab (TLC) | 382 | 557 |
+| jemalloc | 587 | 1467 |
+| malloc | 556 | 1081 |
+
+**End-to-end latency (alloc → verify → free, p50 / p99):**
+
+| Allocator | p50 (ns) | p99 (ns) |
+|-----------|----------|----------|
+| Slab (TLC) | **205** | 462 |
+| Dynamic Slab | 227 | 522 |
+| Pool | 521 | 9741 |
+| jemalloc | ~909K | ~1.1M |
+| malloc | ~1.03M | ~1.07M |
+
+jemalloc and malloc show extreme end-to-end latency because their `free()` path crosses a thread boundary and the consumer's cache is cold relative to the producer. Slab and Dynamic Slab's contiguous mmap regions keep cross-thread free latency low.
 
 Benchmarked on Linux (12-core Intel i5 11th gen), compiled with GCC `-O3 -flto`. All numbers are ns/op (lower is better).
 
