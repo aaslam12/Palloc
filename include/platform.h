@@ -45,6 +45,18 @@ struct platform_mem
 #endif
     }
 
+    [[nodiscard]] static void* virtual_alloc(std::size_t size) noexcept
+    {
+        // also need support for huge pages (2mb)
+        // how do you find page size? or do you define it yourself?
+#ifdef _WIN32
+        return VirtualAlloc(nullptr, size, MEM_RESERVE, PAGE_READWRITE);
+#else
+        void* ptr = mmap(nullptr, size, PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);
+        return ptr == MAP_FAILED ? nullptr : ptr;
+#endif
+    }
+
     static bool free(void* ptr, std::size_t size) noexcept
     {
 #ifdef _WIN32
