@@ -12,6 +12,8 @@ option(PALLOC_STATIC_LINKING "Link libraries statically" OFF)
 option(PALLOC_ENABLE_SANITIZERS "Enable Address/Undefined sanitizers (only in Debug)" OFF)
 option(PALLOC_USE_CLANG_TIDY "Run clang-tidy during builds if available" OFF)
 option(PALLOC_SINGLE_THREADED "Disable allocator mutexes for single-threaded use" OFF)
+option(PALLOC_ENABLE_THP "Enable Transparent Huge Pages" ON)
+option(PALLOC_USE_2MB_HUGE_PAGES "Deterministic 2 MB Huge Pages" OFF)
 
 if(NOT CMAKE_BUILD_TYPE)
   set(CMAKE_BUILD_TYPE "Release" CACHE STRING "Choose the type of build." FORCE)
@@ -85,6 +87,14 @@ endif()
 
 if(PALLOC_SINGLE_THREADED)
   target_compile_definitions(palloc PUBLIC PALLOC_SINGLE_THREADED)
+endif()
+
+if(PALLOC_ENABLE_THP)
+  target_compile_definitions(palloc PUBLIC PALLOC_ENABLE_THP)
+endif()
+
+if(PALLOC_USE_2MB_HUGE_PAGES)
+  target_compile_definitions(palloc PUBLIC PALLOC_USE_2MB_HUGE_PAGES)
 endif()
 
 if(CMAKE_BUILD_TYPE STREQUAL "Debug")
