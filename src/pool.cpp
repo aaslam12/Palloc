@@ -184,7 +184,7 @@ void pool::free_batched_internal(size_t num_objects, void* in[])
         assert(owns(in[i]) && "Pointer does not belong to this pool");
         m_view.free(in[i]);
     }
-    
+
     m_free_count.store(m_view.free_count(), std::memory_order_relaxed);
 }
 

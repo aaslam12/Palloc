@@ -8,9 +8,6 @@
 
 namespace AL
 {
-template<typename Tconfig>
-class slab;
-
 #if defined(PALLOC_SINGLE_THREADED)
 struct pool_mutex
 {
@@ -26,9 +23,6 @@ using pool_mutex = std::mutex;
 class alignas(std::hardware_destructive_interference_size) pool
 {
 public:
-    template<typename Tconfig>
-    friend class slab;
-
     pool();
     pool(size_t block_size, size_t block_count);
     ~pool();
@@ -76,6 +70,12 @@ public:
     size_t get_block_size() const;
     size_t get_block_count() const;
     void clear();
+    bool owns(void* ptr) const;
+
+    // Internal batched operations used by slab's thread-local cache path.
+    // These are public to avoid tight friend coupling between pool and slab.
+    size_t alloc_batched_internal(size_t num_objects, void* out[]);
+    void free_batched_internal(size_t num_objects, void* in[]);
 
     std::byte* get_memory_start() const
     {
@@ -93,10 +93,6 @@ private:
     palloc_atomic<size_t> m_free_count{0};
     mutable pool_mutex m_mutex;
 
-    bool owns(void* ptr) const;
     void check_asserts() const;
-
-    size_t alloc_batched_internal(size_t num_objects, void* out[]);
-    void free_batched_internal(size_t num_objects, void* in[]);
 };
 } // namespace AL

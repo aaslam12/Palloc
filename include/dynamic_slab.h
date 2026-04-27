@@ -12,7 +12,7 @@
 namespace AL
 {
 
-template<typename Tconfig>
+template<slab_config_type Tconfig>
 class dynamic_slab
 {
 public:
@@ -79,7 +79,7 @@ private:
     radix_tree m_tree;
 };
 
-template<typename Tconfig>
+template<slab_config_type Tconfig>
 typename dynamic_slab<Tconfig>::slab_node* dynamic_slab<Tconfig>::create_node(slab_node* next_ptr)
 {
     void* mem = AL::platform_mem::alloc(sizeof(slab_node));
@@ -102,7 +102,7 @@ typename dynamic_slab<Tconfig>::slab_node* dynamic_slab<Tconfig>::create_node(sl
     }
 }
 
-template<typename Tconfig>
+template<slab_config_type Tconfig>
 dynamic_slab<Tconfig>::dynamic_slab() : head(nullptr), node_count(0)
 {
     slab_node* node = create_node(nullptr);
@@ -113,7 +113,7 @@ dynamic_slab<Tconfig>::dynamic_slab() : head(nullptr), node_count(0)
     }
 }
 
-template<typename Tconfig>
+template<slab_config_type Tconfig>
 dynamic_slab<Tconfig>::~dynamic_slab()
 {
     slab_node* current = head.load(std::memory_order_acquire);
@@ -126,7 +126,7 @@ dynamic_slab<Tconfig>::~dynamic_slab()
     }
 }
 
-template<typename Tconfig>
+template<slab_config_type Tconfig>
 void* dynamic_slab<Tconfig>::palloc(size_t size)
 {
     if (size == 0 || size == static_cast<size_t>(-1))
@@ -160,7 +160,7 @@ void* dynamic_slab<Tconfig>::palloc(size_t size)
     return new_node->value.alloc(size);
 }
 
-template<typename Tconfig>
+template<slab_config_type Tconfig>
 void* dynamic_slab<Tconfig>::calloc(size_t size)
 {
     void* ptr = palloc(size);
@@ -173,7 +173,7 @@ void* dynamic_slab<Tconfig>::calloc(size_t size)
     return ptr;
 }
 
-template<typename Tconfig>
+template<slab_config_type Tconfig>
 void dynamic_slab<Tconfig>::free(void* ptr, size_t size)
 {
     if (ptr == nullptr || size == 0 || size == static_cast<size_t>(-1))
@@ -186,7 +186,7 @@ void dynamic_slab<Tconfig>::free(void* ptr, size_t size)
     }
 }
 
-template<typename Tconfig>
+template<slab_config_type Tconfig>
 bool dynamic_slab<Tconfig>::free_unsized(void* ptr)
 {
     if (ptr == nullptr)
@@ -201,7 +201,7 @@ bool dynamic_slab<Tconfig>::free_unsized(void* ptr)
     return false;
 }
 
-template<typename Tconfig>
+template<slab_config_type Tconfig>
 size_t dynamic_slab<Tconfig>::shrink()
 {
     std::lock_guard<pool_mutex> lock(grow_mutex);
@@ -243,7 +243,7 @@ size_t dynamic_slab<Tconfig>::shrink()
     return reclaimed;
 }
 
-template<typename Tconfig>
+template<slab_config_type Tconfig>
 void dynamic_slab<Tconfig>::purge()
 {
     std::lock_guard<pool_mutex> lock(grow_mutex);
@@ -262,7 +262,7 @@ void dynamic_slab<Tconfig>::purge()
     m_tree.clear();
 }
 
-template<typename Tconfig>
+template<slab_config_type Tconfig>
 size_t dynamic_slab<Tconfig>::get_total_capacity() const
 {
     size_t total = 0;
@@ -271,7 +271,7 @@ size_t dynamic_slab<Tconfig>::get_total_capacity() const
     return total;
 }
 
-template<typename Tconfig>
+template<slab_config_type Tconfig>
 size_t dynamic_slab<Tconfig>::get_total_free() const
 {
     size_t total = 0;
@@ -280,7 +280,7 @@ size_t dynamic_slab<Tconfig>::get_total_free() const
     return total;
 }
 
-template<typename Tconfig>
+template<slab_config_type Tconfig>
 size_t dynamic_slab<Tconfig>::get_slab_count() const
 {
     return node_count.load(std::memory_order_relaxed);
