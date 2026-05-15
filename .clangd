@@ -7,6 +7,16 @@ CompileFlags:
 ---
 
 If:
+  PathMatch: (^|.*/)include/platform\.h
+
+CompileFlags:
+  CompilationDatabase: None
+  Compiler: /usr/bin/x86_64-w64-mingw32-g++
+  Add: [-xc++, -std=c++20, -D_WIN32, -DWIN32]
+
+---
+
+If:
   PathMatch: .*\.h
 
 CompileFlags:

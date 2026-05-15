@@ -230,7 +230,15 @@ slab<Tconfig>::slab() : epoch(0), slab_id(next_slab_id.fetch_add(1, std::memory_
 
     void* mem = AL::platform_mem::virtual_alloc(m_region_size);
     if (mem == nullptr)
-        throw std::runtime_error("slab virtual_alloc failed: required huge-page-backed virtual reservation is unavailable");
+    {
+        throw std::runtime_error("slab virtual_alloc failed: could not allocate any more virtual memory");
+    }
+
+    if (!AL::platform_mem::virtual_commit(mem, raw_size))
+    {
+        AL::platform_mem::free(mem, m_region_size); // constructor failed to commit reserved pages, release virt mem
+        throw std::runtime_error("slab virtual_commit failed: not enough physical memory");
+    }
 
     m_region = static_cast<std::byte*>(mem);
 
@@ -239,13 +247,14 @@ slab<Tconfig>::slab() : epoch(0), slab_id(next_slab_id.fetch_add(1, std::memory_
     for (size_t i = 0; i < Tconfig::NUM_SIZE_CLASSES; ++i)
     {
         auto& sc = Tconfig::SIZE_CLASS_CONFIG[i];
+
         // align cursor to block_size
         auto addr = reinterpret_cast<uintptr_t>(cursor);
         uintptr_t mask = sc.byte_size - 1;
         addr = (addr + mask) & ~mask;
         cursor = reinterpret_cast<std::byte*>(addr);
 
-        shared_pools[i].init_from_region(cursor, sc.byte_size, sc.num_blocks);
+        shared_pools[i].init_from_region(cursor, sc.byte_size, sc.num_blocks); // TODO: refactor to use full virtual memory space
         cursor += pool_view::required_region_size(sc.byte_size, sc.num_blocks);
     }
 }

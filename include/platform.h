@@ -1,9 +1,13 @@
 #pragma once
 
 #include <cstddef>
+#include <cstring>
 
 #ifdef _WIN32
+#include <memoryapi.h>
+#include <minwindef.h>
 #include <windows.h>
+#include <winnt.h>
 #else
 #include <linux/mman.h>
 #include <sys/mman.h>
@@ -51,24 +55,47 @@ struct platform_mem
 #endif
     }
 
-    // allocates virtual memory without using physical memory
+    // used for lazy commit strategies
+    // reserves virtual memory without using physical memory
     // size is in bytes and must be a multiple of the system page size
     [[nodiscard]] static void* virtual_alloc(std::size_t size) noexcept
     {
 #ifdef _WIN32
-        return alloc(size);
+        // returns null or fail
+        return VirtualAlloc(nullptr, size, MEM_RESERVE, PAGE_NOACCESS);
 #else
-#if PALLOC_USE_2MB_HUGE_PAGES
-        // size must be a multple of 2 MB
-        void* ptr = mmap(nullptr, size, PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_ANONYMOUS | MAP_HUGETLB | MAP_HUGE_2MB, -1, 0);
-#elif PALLOC_ENABLE_THP
-        void* ptr = alloc(size);
-        if (ptr != nullptr)
-            madvise(ptr, size, MADV_HUGEPAGE); // enables transparent huge pages
-#else
-        void* ptr = alloc(size);
-#endif
+        // size is in bytes and must be a multiple of the system page size
+        void* ptr = mmap(nullptr,
+                         size,
+                         PROT_NONE, // becomes rw when virtual_commit() calls mprotect()
+                         MAP_PRIVATE | MAP_ANONYMOUS | MAP_NORESERVE,
+                         -1,
+                         0);
         return ptr == MAP_FAILED ? nullptr : ptr;
+#endif
+    }
+
+    // used for lazy commit strategies
+    // activates reserved virtual pages so they can be read and written
+    // size is in bytes and must be a multiple of the system page size
+    static bool virtual_commit(void* ptr, std::size_t size) noexcept
+    {
+#ifdef _WIN32
+        // returns null or fail
+        return VirtualAlloc(ptr, size, MEM_COMMIT, PAGE_READWRITE);
+#else
+        return mprotect(ptr, size, PROT_READ | PROT_WRITE) == 0;
+#endif
+    }
+
+    // decommits physical memory and strips perms
+    static bool virtual_free(void* ptr, std::size_t size) noexcept
+    {
+#ifdef _WIN32
+        return VirtualFree(ptr, size, MEM_DECOMMIT) != 0;
+#else
+        madvise(ptr, size, MADV_DONTNEED);
+        return mprotect(ptr, size, PROT_NONE) == 0;
 #endif
     }
 

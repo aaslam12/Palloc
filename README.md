@@ -65,6 +65,7 @@ All allocators:
 - Catch2 v3
 - Ninja (recommended)
 - jemalloc (optional, for benchmarks)
+- mingw-w64 (optional, for Win32 API clangd signatures on Linux)
 
 ### Building
 
