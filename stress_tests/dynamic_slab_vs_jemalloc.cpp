@@ -101,6 +101,7 @@ int main()
             for (size_t tid = 0; tid < threads; ++tid)
             {
                 workers.emplace_back([&, tid] {
+                    size_t local_ops = 0;
                     std::vector<void*> ptrs(500);
                     wait_for_start(start);
                     for (size_t i = 0; i < iters; ++i)
@@ -109,8 +110,9 @@ int main()
                             ptrs[j] = alloc_fn();
                         for (size_t j = 0; j < 500; ++j)
                             free_fn(ptrs[j]);
-                        total_ops.fetch_add(1000, std::memory_order_relaxed);
+                        local_ops += 1000;
                     }
+                    total_ops.fetch_add(local_ops, std::memory_order_relaxed);
                 });
             }
             start.store(true, std::memory_order_release);
@@ -144,6 +146,7 @@ int main()
             for (size_t tid = 0; tid < threads; ++tid)
             {
                 workers.emplace_back([&, tid] {
+                    size_t local_ops = 0;
                     std::vector<void*> ptrs(100);
                     wait_for_start(start);
                     for (size_t i = 0; i < iters; ++i)
@@ -158,8 +161,9 @@ int main()
                             size_t sz = sizes[(tid + i + j) % 8];
                             free_fn(ptrs[j], sz);
                         }
-                        total_ops.fetch_add(200, std::memory_order_relaxed);
+                        local_ops += 200;
                     }
+                    total_ops.fetch_add(local_ops, std::memory_order_relaxed);
                 });
             }
             start.store(true, std::memory_order_release);

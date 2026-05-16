@@ -46,10 +46,6 @@ int main()
                 }
                 ptrs.push_back(ptr);
 
-                if ((i + 1) % 25000 == 0)
-                {
-                    std::cout << "  Progress: " << (i + 1) << "/" << SMALL_ALLOCS << '\n';
-                }
             }
 
             auto end = std::chrono::high_resolution_clock::now();
@@ -77,10 +73,6 @@ int main()
                 }
                 ptrs.push_back(ptr);
 
-                if ((i + 1) % 25000 == 0)
-                {
-                    std::cout << "  Progress: " << (i + 1) << "/" << SMALL_ALLOCS << '\n';
-                }
             }
 
             auto end = std::chrono::high_resolution_clock::now();
@@ -129,10 +121,6 @@ int main()
 
                 a.reset();
 
-                if ((cycle + 1) % 2500 == 0)
-                {
-                    std::cout << "  Progress: " << (cycle + 1) << "/" << RESET_CYCLES << '\n';
-                }
             }
 
             auto end = std::chrono::high_resolution_clock::now();
@@ -172,10 +160,6 @@ int main()
                     free(ptr);
                 }
 
-                if ((cycle + 1) % 2500 == 0)
-                {
-                    std::cout << "  Progress: " << (cycle + 1) << "/" << RESET_CYCLES << '\n';
-                }
             }
 
             auto end = std::chrono::high_resolution_clock::now();
@@ -218,10 +202,6 @@ int main()
                 }
                 ptrs.push_back(ptr);
 
-                if ((i + 1) % 12500 == 0)
-                {
-                    std::cout << "  Progress: " << (i + 1) << "/" << MIXED_ALLOCS << '\n';
-                }
             }
 
             auto end = std::chrono::high_resolution_clock::now();
@@ -250,10 +230,6 @@ int main()
                 }
                 ptrs.push_back(ptr);
 
-                if ((i + 1) % 12500 == 0)
-                {
-                    std::cout << "  Progress: " << (i + 1) << "/" << MIXED_ALLOCS << '\n';
-                }
             }
 
             auto end = std::chrono::high_resolution_clock::now();

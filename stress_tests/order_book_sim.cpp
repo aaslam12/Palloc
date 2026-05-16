@@ -11,6 +11,7 @@
 // ═══════════════════════════════════════════════════════════════════════════════
 
 #include "dynamic_slab.h"
+#include "low_overhead_bench.h"
 #include "pool.h"
 #include "slab.h"
 
@@ -28,21 +29,17 @@
 #include <vector>
 
 using namespace AL;
-using Clock = std::chrono::high_resolution_clock;
-using Duration = std::chrono::nanoseconds;
-
-// ─── Compiler hints ──────────────────────────────────────────────────────────
-
-inline void escape(void* p) { asm volatile("" : : "g"(p) : "memory"); }
-inline void clobber() { asm volatile("" : : : "memory"); }
+using namespace bench;
 
 // ─── Test parameters ─────────────────────────────────────────────────────────
 
 static constexpr int PRICE_RANGE = 1000;
 static constexpr int WARMUP_ORDERS = 5000;
 static constexpr int DURATION_SECS = 7;
-static constexpr size_t LATENCY_CAPACITY = 2'000'000;
+static constexpr size_t LATENCY_CAPACITY = 262'144;
 static constexpr size_t POOL_CAPACITY = 500'000;
+static constexpr size_t LATENCY_SAMPLE_MASK = 16383; // sample every 16K ops (was 1K)
+static constexpr size_t DEADLINE_CHECK_MASK = 4095;  // check time every 4K ops
 
 // ─── Order struct — realistic trading order ──────────────────────────────────
 // Laid out to match a real order entry with doubly-linked list pointers
@@ -118,18 +115,17 @@ struct PriceLevel
     }
 };
 
-// ─── Latency recorder ───────────────────────────────────────────────────────
+// ─── Latency recorder (fixed-size, no heap allocation) ───────────────────────
 
 struct LatencyRecorder
 {
-    std::vector<uint64_t> samples;
+    alignas(64) uint64_t samples[LATENCY_CAPACITY];
     size_t idx = 0;
-
-    explicit LatencyRecorder(size_t cap) : samples(cap) {}
 
     void record(uint64_t ns)
     {
-        if (idx < samples.size()) samples[idx++] = ns;
+        if (idx < LATENCY_CAPACITY)
+            samples[idx++] = ns;
     }
 
     struct Stats
@@ -140,14 +136,15 @@ struct LatencyRecorder
 
     Stats compute()
     {
-        if (idx == 0) return {};
-        std::sort(samples.begin(), samples.begin() + idx);
+        if (idx == 0)
+            return {};
+        std::sort(samples, samples + idx);
         Stats s;
         s.p50 = samples[idx * 50 / 100];
         s.p90 = samples[idx * 90 / 100];
         s.p99 = samples[idx * 99 / 100];
         s.p999 = samples[idx * 999 / 1000];
-        double sum = std::accumulate(samples.begin(), samples.begin() + idx, 0.0);
+        double sum = std::accumulate(samples, samples + idx, 0.0);
         s.mean = sum / static_cast<double>(idx);
         return s;
     }
@@ -279,7 +276,7 @@ BenchResult run_st(const char* name, AllocFn alloc_fn, FreeFn free_fn)
     std::uniform_int_distribution<uint32_t> qty_dist(1, 1000);
     std::uniform_int_distribution<int> side_dist(0, 1);
 
-    LatencyRecorder recorder(LATENCY_CAPACITY);
+    LatencyRecorder recorder;
     uint64_t order_id = 0;
     size_t ops = 0;
 
@@ -302,13 +299,16 @@ BenchResult run_st(const char* name, AllocFn alloc_fn, FreeFn free_fn)
         book.add_order(ord);
     }
 
-    auto start = Clock::now();
-    auto deadline = start + std::chrono::seconds(DURATION_SECS);
+    DeadlineTimer timer(DURATION_SECS);
+    auto start = std::chrono::high_resolution_clock::now();
 
-    while (Clock::now() < deadline)
+    for (;;)
     {
-        bool sample = (ops & 127) == 0;
-        auto t0 = sample ? Clock::now() : Clock::time_point{};
+        if ((ops & DEADLINE_CHECK_MASK) == 0 && timer.is_done())
+            break;
+
+        bool sample = (ops & LATENCY_SAMPLE_MASK) == 0;
+        uint64_t t0 = sample ? rdtsc() : 0;
 
         int action = action_dist(rng);
 
@@ -384,13 +384,13 @@ BenchResult run_st(const char* name, AllocFn alloc_fn, FreeFn free_fn)
 
         if (sample)
         {
-            auto elapsed = std::chrono::duration_cast<Duration>(Clock::now() - t0).count();
-            recorder.record(static_cast<uint64_t>(elapsed));
+            uint64_t elapsed = rdtsc() - t0;
+            recorder.record(elapsed);
         }
         ops++;
     }
 
-    double total_elapsed = std::chrono::duration<double>(Clock::now() - start).count();
+    double total_elapsed = std::chrono::duration<double>(std::chrono::high_resolution_clock::now() - start).count();
 
     // Cleanup
     for (Order* ord : book.live_orders)
@@ -408,15 +408,20 @@ template <typename AllocFn, typename FreeFn>
 BenchResult run_mt(const char* name, size_t num_threads, AllocFn alloc_fn, FreeFn free_fn)
 {
     std::atomic<bool> go{false};
+    std::atomic<bool> done{false};
     std::atomic<size_t> total_ops{0};
-    std::vector<LatencyRecorder> recorders;
-    for (size_t i = 0; i < num_threads; i++)
-        recorders.emplace_back(LATENCY_CAPACITY / num_threads);
+    std::vector<LatencyRecorder> recorders(num_threads);
 
     std::vector<std::thread> threads;
     threads.reserve(num_threads);
 
-    auto start = Clock::now();
+    auto start = std::chrono::high_resolution_clock::now();
+
+    // Deadline timer thread
+    std::thread timer([&] {
+        std::this_thread::sleep_for(std::chrono::seconds(DURATION_SECS));
+        done.store(true, std::memory_order_relaxed);
+    });
 
     for (size_t tid = 0; tid < num_threads; tid++)
     {
@@ -455,12 +460,13 @@ BenchResult run_mt(const char* name, size_t num_threads, AllocFn alloc_fn, FreeF
                 book.add_order(ord);
             }
 
-            auto deadline = Clock::now() + std::chrono::seconds(DURATION_SECS);
-
-            while (Clock::now() < deadline)
+            for (;;)
             {
-                bool sample = (ops & 255) == 0;
-                auto t0 = sample ? Clock::now() : Clock::time_point{};
+                if ((ops & DEADLINE_CHECK_MASK) == 0 && done.load(std::memory_order_relaxed))
+                    break;
+
+                bool sample = (ops & LATENCY_SAMPLE_MASK) == 0;
+                uint64_t t0 = sample ? rdtsc() : 0;
                 int action = action_dist(rng);
 
                 if (action < 45 || book.live_orders.size() < 50)
@@ -528,8 +534,8 @@ BenchResult run_mt(const char* name, size_t num_threads, AllocFn alloc_fn, FreeF
 
                 if (sample)
                 {
-                    auto elapsed = std::chrono::duration_cast<Duration>(Clock::now() - t0).count();
-                    recorders[tid].record(static_cast<uint64_t>(elapsed));
+                    uint64_t elapsed = rdtsc() - t0;
+                    recorders[tid].record(elapsed);
                 }
                 ops++;
             }
@@ -547,10 +553,11 @@ BenchResult run_mt(const char* name, size_t num_threads, AllocFn alloc_fn, FreeF
     for (auto& t : threads)
         t.join();
 
-    double total_elapsed = std::chrono::duration<double>(Clock::now() - start).count();
+    timer.join();
+    double total_elapsed = std::chrono::duration<double>(std::chrono::high_resolution_clock::now() - start).count();
 
     // Merge latency samples from all threads
-    LatencyRecorder merged(LATENCY_CAPACITY);
+    LatencyRecorder merged;
     for (auto& rec : recorders)
         for (size_t i = 0; i < rec.idx; i++)
             merged.record(rec.samples[i]);

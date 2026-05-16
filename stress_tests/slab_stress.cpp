@@ -49,11 +49,6 @@ int main()
             for (auto& [ptr, size] : ptrs)
                 s.free(ptr, size);
 
-            // Progress indicator
-            if ((cycle + 1) % 2500 == 0)
-            {
-                std::cout << "  Progress: " << (cycle + 1) << "/" << NUM_CYCLES << " cycles completed" << '\n';
-            }
         }
 
         auto end = std::chrono::high_resolution_clock::now();
@@ -104,11 +99,6 @@ int main()
             }
             s.free(ptr, 64);
 
-            // Progress indicator
-            if ((i + 1) % 200000 == 0)
-            {
-                std::cout << "  Progress: " << (i + 1) << "/" << RAPID_CYCLES << " cycles completed" << '\n';
-            }
         }
 
         auto end = std::chrono::high_resolution_clock::now();

@@ -41,11 +41,6 @@ int main()
             }
             ptrs.push_back(ptr);
 
-            // Progress indicator
-            if ((i + 1) % 20000 == 0)
-            {
-                std::cout << "  Progress: " << (i + 1) << "/" << SMALL_ALLOCS << " allocations, used=" << a.get_used() << " bytes" << '\n';
-            }
         }
 
         auto end = std::chrono::high_resolution_clock::now();
@@ -124,11 +119,6 @@ int main()
                 return 1;
             }
 
-            // Progress indicator
-            if ((cycle + 1) % 2500 == 0)
-            {
-                std::cout << "  Progress: " << (cycle + 1) << "/" << RESET_CYCLES << " cycles completed" << '\n';
-            }
         }
 
         auto end = std::chrono::high_resolution_clock::now();
