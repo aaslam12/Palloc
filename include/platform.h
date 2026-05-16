@@ -9,7 +9,6 @@
 #include <windows.h>
 #include <winnt.h>
 #else
-#include <linux/mman.h>
 #include <sys/mman.h>
 #include <unistd.h>
 #endif

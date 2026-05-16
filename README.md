@@ -59,7 +59,7 @@ All allocators:
 
 ### Requirements
 
-- POSIX compliant Operating System (library uses `mmap` `munmap`)
+- Linux, macOS, or Windows (x64)
 - C++20 compiler
 - CMake 3.10+
 - Catch2 v3
