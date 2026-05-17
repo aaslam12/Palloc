@@ -1,5 +1,7 @@
 #pragma once
 
+#include "palloc_atomic.h"
+#include <atomic>
 #include <cstddef>
 #include <cstdint>
 #include <span>
@@ -11,6 +13,37 @@ class pool_view
 {
 public:
     pool_view() noexcept = default;
+
+    pool_view(const pool_view&) = delete;
+    pool_view& operator=(const pool_view&) = delete;
+
+    pool_view(pool_view&& other) noexcept
+        : m_memory(other.m_memory), m_bitmap(other.m_bitmap), m_block_size(other.m_block_size), m_block_count(other.m_block_count),
+          m_free_count(other.m_free_count.load(std::memory_order_relaxed)), m_bitmap_words(other.m_bitmap_words),
+          m_hint(other.m_hint.load(std::memory_order_relaxed)), m_block_shift(other.m_block_shift)
+    {
+        other.m_memory = nullptr;
+        other.m_bitmap = nullptr;
+    }
+
+    pool_view& operator=(pool_view&& other) noexcept
+    {
+        if (this == &other)
+            return *this;
+        m_memory = other.m_memory;
+        m_bitmap = other.m_bitmap;
+        m_block_size = other.m_block_size;
+        m_block_count = other.m_block_count;
+
+        m_free_count.store(other.m_free_count.load(std::memory_order_relaxed), std::memory_order_relaxed);
+        m_bitmap_words = other.m_bitmap_words;
+        m_hint.store(other.m_hint.load(std::memory_order_relaxed), std::memory_order_relaxed);
+
+        m_block_shift = other.m_block_shift;
+        other.m_memory = nullptr;
+        other.m_bitmap = nullptr;
+        return *this;
+    }
 
     // region must hold at least required_region_size(block_size, block_count) bytes.
     // base must be cache line aligned
@@ -42,14 +75,17 @@ public:
     [[nodiscard]] static size_t required_region_size(size_t block_size, size_t block_count) noexcept;
 
 private:
-    std::byte* m_memory = nullptr; // first payload block (after bitmap + padding)
-    uint64_t* m_bitmap = nullptr;  // bitmap at start of region
+    std::byte* m_memory = nullptr;                   // first payload block (after bitmap + padding)
+    AL::palloc_atomic<uint64_t>* m_bitmap = nullptr; // bitmap at start of region
+
     size_t m_block_size = 0;
     size_t m_block_count = 0;
-    size_t m_free_count = 0;
+
+    AL::palloc_atomic<size_t> m_free_count{0};
     size_t m_bitmap_words = 0;
-    size_t m_hint = 0;       // first bitmap word that may have a free bit
-    size_t m_block_shift = 0; // log2(m_block_size) — used for shift-based indexing
+
+    AL::palloc_atomic<size_t> m_hint{0}; // advisory lower bound for bitmap scan
+    size_t m_block_shift = 0;            // log2(m_block_size) — used for shift-based indexing
 };
 
 } // namespace AL

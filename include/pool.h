@@ -91,7 +91,6 @@ private:
     size_t m_region_size = 0;      // total mmap'd size (for munmap)
     pool_view m_view;              // bitmap-based allocator (non-owning)
     palloc_atomic<size_t> m_free_count{0};
-    mutable pool_mutex m_mutex;
 
     void check_asserts() const;
 };

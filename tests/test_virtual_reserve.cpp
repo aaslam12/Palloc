@@ -122,9 +122,15 @@ TEST_CASE("Slab: Linux reserve-first mapping inflates virtual size with low RSS"
     REQUIRE(vm_size_delta <= EXPECTED_RESERVE_KB + ONE_GIB_KB);
 
     // physical memory should stay low despite huge virtual reservation
+    // TSan adds significant shadow memory overhead, so allow more headroom under sanitizers
+#if defined(__SANITIZE_THREAD__) || defined(__SANITIZE_ADDRESS__)
+    constexpr std::uint64_t MAX_ANON_KB = 64ULL * 1024ULL;  // 64 MiB under sanitizers
+#else
+    constexpr std::uint64_t MAX_ANON_KB = 16ULL * 1024ULL;  // 16 MiB normally
+#endif
     REQUIRE(after.vm_size >= EXPECTED_RESERVE_KB);
     REQUIRE(after.vm_rss <= 64ULL * 1024ULL);  // <= 64 MiB
-    REQUIRE(after.rss_anon <= 16ULL * 1024ULL); // <= 16 MiB
+    REQUIRE(after.rss_anon <= MAX_ANON_KB);
     REQUIRE(after.vm_swap == 0);
 }
 
