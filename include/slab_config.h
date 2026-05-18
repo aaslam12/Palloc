@@ -64,7 +64,8 @@ template<std::size_t Tnum = 10,
                  size_class{.byte_size = 4096,  .num_blocks = 32,  .batch_size = 4}
 },
          std::size_t Tnum_cached_classes = Tnum,
-         std::size_t Tvirtual_mem_prealloc_size = AL::ONE_GB * 100>
+         std::size_t Tvirtual_mem_prealloc_size = AL::ONE_GB * 100, // how much virtual memory to reserve during slab construction
+         std::size_t Tnum_cached_slabs = 4> // cached slabs refer to the TLC where each thread gets this amount of cached slabs
 struct slab_config
 {
     using palloc_slab_config_tag = void;
@@ -78,6 +79,7 @@ struct slab_config
     inline static constexpr std::array<size_class, Tnum> SIZE_CLASS_CONFIG = Tsize_class_config;
     static constexpr std::size_t NUM_SIZE_CLASSES = Tnum;
     static constexpr std::size_t NUM_CACHED_CLASSES = Tnum_cached_classes;
+    static constexpr std::size_t NUM_CACHED_SLABS = Tnum_cached_slabs;
     static constexpr std::size_t VIRTUAL_MEM_PREALLOC_SIZE = Tvirtual_mem_prealloc_size;
 
     static constexpr std::size_t INDEX_SPAN =
@@ -93,6 +95,7 @@ struct slab_config
         {
             std::size_t target_size = std::size_t(1) << (min_bw + vi - 1);
             lut[vi] = static_cast<std::size_t>(-1);
+
             for (std::size_t j = 0; j < Tnum; ++j)
             {
                 if (Tsize_class_config[j].byte_size >= target_size)
@@ -115,9 +118,11 @@ struct slab_config
         for (std::size_t i = 0; i < Tnum; ++i)
         {
             auto const& sc = Tsize_class_config[i];
+
             // align cursor to block_size
             std::size_t mask = sc.byte_size - 1;
             total = (total + mask) & ~mask;
+
             // add region for this pool
             std::size_t bitmap_words = (sc.num_blocks + 63) / 64;
             std::size_t bitmap_bytes = bitmap_words * sizeof(uint64_t);
@@ -132,8 +137,10 @@ template<typename T>
 concept slab_config_type = requires {
     typename T::palloc_slab_config_tag;
     requires std::same_as<typename T::palloc_slab_config_tag, void>;
+
     { T::NUM_SIZE_CLASSES } -> std::convertible_to<std::size_t>;
     { T::NUM_CACHED_CLASSES } -> std::convertible_to<std::size_t>;
+    { T::NUM_CACHED_SLABS } -> std::convertible_to<std::size_t>;
     { T::VIRTUAL_MEM_PREALLOC_SIZE } -> std::convertible_to<std::size_t>;
     { T::INDEX_SPAN } -> std::convertible_to<std::size_t>;
     { T::SIZE_CLASS_CONFIG };

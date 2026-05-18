@@ -207,7 +207,7 @@ int main()
     // Each thread rotates across exactly as many slabs as the TLC can hold,
     // so cache entries are never evicted.
     {
-        constexpr size_t num_slabs = 4; // == MAX_CACHED_SLABS
+        constexpr size_t num_slabs = slab_config<>::NUM_CACHED_SLABS;
         constexpr size_t iters = 100'000;
 
         std::vector<default_slab*> slabs(num_slabs);
@@ -261,7 +261,7 @@ int main()
     // Test 5b: Multi-slab TLC — churn (slabs > MAX_CACHED_SLABS)
     // Rotating across more slabs than the TLC can hold forces constant eviction.
     {
-        constexpr size_t num_slabs = 8; // > MAX_CACHED_SLABS (4)
+        constexpr size_t num_slabs = 2 * slab_config<>::NUM_CACHED_SLABS;
         constexpr size_t iters = 100'000;
 
         std::vector<default_slab*> slabs(num_slabs);
@@ -301,7 +301,7 @@ int main()
         std::chrono::duration<double> elapsed = t1 - t0;
         const size_t ops = total_ops.load();
 
-        std::cout << "--- Test 5b: Multi-slab TLC churn (slabs = " << num_slabs << " > MAX_CACHED_SLABS = 4) ---\n";
+        std::cout << "--- Test 5b: Multi-slab TLC churn (slabs = " << num_slabs << " > MAX_CACHED_SLABS = " << slab_config<>::NUM_CACHED_SLABS << ") ---\n";
         std::cout << "  Threads:    " << threads << "\n";
         std::cout << "  Total ops:  " << ops << "\n";
         std::cout << "  Elapsed:    " << elapsed.count() << " s\n";

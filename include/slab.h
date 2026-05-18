@@ -122,7 +122,7 @@ public:
     }
 
 private:
-    constexpr static size_t MAX_CACHED_SLABS = 4;
+    constexpr static size_t MAX_CACHED_SLABS = Tconfig::NUM_CACHED_SLABS;
 
     struct cache_entry
     {
