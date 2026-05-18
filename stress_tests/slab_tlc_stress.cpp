@@ -203,12 +203,14 @@ int main()
         }
     }
 
-    // Test 5: Multi-slab TLC eviction
-    // More slabs than MAX_CACHED_SLABS (4) forces TLC eviction path.
+    // Test 5a: Multi-slab TLC — no churn (slabs == MAX_CACHED_SLABS)
+    // Each thread rotates across exactly as many slabs as the TLC can hold,
+    // so cache entries are never evicted.
     {
-        constexpr size_t num_slabs = 8;
+        constexpr size_t num_slabs = 4; // == MAX_CACHED_SLABS
         constexpr size_t iters = 100'000;
-        std::array<default_slab*, num_slabs> slabs;
+
+        std::vector<default_slab*> slabs(num_slabs);
         for (auto& sp : slabs)
             sp = new default_slab{};
 
@@ -243,13 +245,68 @@ int main()
 
         auto t1 = std::chrono::high_resolution_clock::now();
         std::chrono::duration<double> elapsed = t1 - t0;
+        const size_t ops = total_ops.load();
 
-        std::cout << "--- Test 5: Multi-slab TLC eviction path ---\n";
-        std::cout << "  Slabs:       " << num_slabs << " (> MAX_CACHED_SLABS=4)\n";
-        std::cout << "  Threads:     " << threads << "\n";
-        std::cout << "  Total ops:   " << total_ops.load() << "\n";
-        std::cout << "  Elapsed:     " << elapsed.count() << " s\n";
-        std::cout << "  Throughput:  " << static_cast<size_t>(total_ops.load() / elapsed.count()) << " ops/s\n\n";
+        std::cout << "--- Test 5a: Multi-slab TLC no-churn (slabs == MAX_CACHED_SLABS = " << num_slabs << ") ---\n";
+        std::cout << "  Threads:    " << threads << "\n";
+        std::cout << "  Total ops:  " << ops << "\n";
+        std::cout << "  Elapsed:    " << elapsed.count() << " s\n";
+        std::cout << "  Throughput: " << static_cast<size_t>(ops / elapsed.count()) << " ops/s\n";
+        std::cout << "  ns/op:      " << ns_per_op(elapsed.count(), ops) << "\n\n";
+
+        for (auto* sp : slabs)
+            delete sp;
+    }
+
+    // Test 5b: Multi-slab TLC — churn (slabs > MAX_CACHED_SLABS)
+    // Rotating across more slabs than the TLC can hold forces constant eviction.
+    {
+        constexpr size_t num_slabs = 8; // > MAX_CACHED_SLABS (4)
+        constexpr size_t iters = 100'000;
+
+        std::vector<default_slab*> slabs(num_slabs);
+        for (auto& sp : slabs)
+            sp = new default_slab{};
+
+        std::atomic<bool> start{false};
+        std::atomic<size_t> total_ops{0};
+        std::vector<std::thread> workers;
+        workers.reserve(threads);
+
+        auto t0 = std::chrono::high_resolution_clock::now();
+
+        for (size_t tid = 0; tid < threads; ++tid)
+        {
+            workers.emplace_back([&, tid] {
+                wait_for_start(start);
+                for (size_t i = 0; i < iters; ++i)
+                {
+                    default_slab& s = *slabs[(tid + i) % num_slabs];
+                    size_t sz = (i % 2 == 0) ? 32 : 64;
+                    void* p = s.alloc(sz);
+                    if (p)
+                    {
+                        s.free(p, sz);
+                        total_ops.fetch_add(2, std::memory_order_relaxed);
+                    }
+                }
+            });
+        }
+
+        start.store(true, std::memory_order_release);
+        for (auto& t : workers)
+            t.join();
+
+        auto t1 = std::chrono::high_resolution_clock::now();
+        std::chrono::duration<double> elapsed = t1 - t0;
+        const size_t ops = total_ops.load();
+
+        std::cout << "--- Test 5b: Multi-slab TLC churn (slabs = " << num_slabs << " > MAX_CACHED_SLABS = 4) ---\n";
+        std::cout << "  Threads:    " << threads << "\n";
+        std::cout << "  Total ops:  " << ops << "\n";
+        std::cout << "  Elapsed:    " << elapsed.count() << " s\n";
+        std::cout << "  Throughput: " << static_cast<size_t>(ops / elapsed.count()) << " ops/s\n";
+        std::cout << "  ns/op:      " << ns_per_op(elapsed.count(), ops) << "\n\n";
 
         for (auto* sp : slabs)
             delete sp;
