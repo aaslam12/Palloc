@@ -5,7 +5,6 @@
 #include <cstddef>
 #include <cstring>
 #include <iostream>
-#include <mutex>
 
 namespace AL
 {
@@ -67,16 +66,6 @@ void pool::init(size_t block_size, size_t block_count)
 
     m_region = static_cast<std::byte*>(ptr);
     m_view.init_from_region(m_region, block_size, block_count);
-    m_free_count.store(block_count, std::memory_order_relaxed);
-}
-
-void pool::init_from_region(void* base, size_t block_size, size_t block_count)
-{
-    assert(!m_view.is_initialized() && "pool likely already initialized");
-    assert(m_region == nullptr && "pool already owns memory");
-
-    // non-owning: m_region stays nullptr so destructor won't munmap
-    m_view.init_from_region(base, block_size, block_count);
     m_free_count.store(block_count, std::memory_order_relaxed);
 }
 

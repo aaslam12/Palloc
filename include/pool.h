@@ -34,11 +34,6 @@ public:
 
     void init(size_t block_size, size_t block_count);
 
-    // non-owning initialization: the pool does not mmap or own the memory.
-    // the caller (typically slab) is responsible for the lifetime of the region.
-    // base must be aligned to at least block_size.
-    void init_from_region(void* base, size_t block_size, size_t block_count);
-
     // allocates a block of memory from the pool
     // returns properly aligned memory
     // thread-safe
@@ -72,8 +67,7 @@ public:
     void clear();
     bool owns(void* ptr) const;
 
-    // Internal batched operations used by slab's thread-local cache path.
-    // These are public to avoid tight friend coupling between pool and slab.
+    // batched operations
     size_t alloc_batched_internal(size_t num_objects, void* out[]);
     void free_batched_internal(size_t num_objects, void* in[]);
 
@@ -88,8 +82,8 @@ public:
 
 private:
     std::byte* m_region = nullptr; // owned mmap'd memory
-    size_t m_region_size = 0;      // total mmap'd size (for munmap)
-    pool_view m_view;              // bitmap-based allocator (non-owning)
+    size_t m_region_size = 0;      // total mmap'd size
+    pool_view m_view;              // non owning pool_view that is given memory by this class
     palloc_atomic<size_t> m_free_count{0};
 
     void check_asserts() const;

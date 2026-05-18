@@ -1,13 +1,12 @@
 #pragma once
 
 #include <atomic>
-#include <cstddef>
 
 #if defined(PALLOC_SINGLE_THREADED)
 
-// Drop-in replacement for std::atomic<T> that compiles to plain loads/stores
-// when the library is built in single-threaded mode. Eliminates LOCK
-// instructions (LOCK XADD, LOCK CMPXCHG, etc.) that cost ~15-20 cycles each.
+// Lightweight atomic wrapper for a subset of std::atomic<T> that compiles to plain loads/stores
+// when the library is built in single-threaded mode.
+// Eliminates LOCK instructions (LOCK XADD, LOCK CMPXCHG, etc.)
 
 namespace AL
 {

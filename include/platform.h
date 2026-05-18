@@ -21,7 +21,6 @@ inline constexpr bool palloc_is_windows =
 #endif
 
 // Portable compiler hints for cold/noinline functions.
-// Keeps rarely-executed code out of the hot path's icache footprint.
 #if defined(__GNUC__) || defined(__clang__)
 #define PALLOC_COLD __attribute__((noinline, cold))
 #elif defined(_MSC_VER)
@@ -56,14 +55,14 @@ struct platform_mem
 
     // used for lazy commit strategies
     // reserves virtual memory without using physical memory
-    // size is in bytes and must be a multiple of the system page size
+    // size is in bytes and usually a multiple of the system page size
     [[nodiscard]] static void* virtual_alloc(std::size_t size) noexcept
     {
 #ifdef _WIN32
         // returns null or fail
         return VirtualAlloc(nullptr, size, MEM_RESERVE, PAGE_NOACCESS);
 #else
-        // size is in bytes and must be a multiple of the system page size
+        // size is in bytes and usually a multiple of the system page size
         void* ptr = mmap(nullptr,
                          size,
                          PROT_NONE, // becomes rw when virtual_commit() calls mprotect()
@@ -76,7 +75,7 @@ struct platform_mem
 
     // used for lazy commit strategies
     // activates reserved virtual pages so they can be read and written
-    // size is in bytes and must be a multiple of the system page size
+    // size is in bytes and usually a multiple of the system page size
     static bool virtual_commit(void* ptr, std::size_t size) noexcept
     {
 #ifdef _WIN32
