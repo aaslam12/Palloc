@@ -5,8 +5,12 @@
 #include "pool_view.h"
 #include "slab_config.h"
 #include <cassert>
+#include <cmath>
 #include <cstddef>
+#include <cstdint>
 #include <cstring>
+#include <iostream>
+#include <istream>
 #include <new>
 #include <span>
 #include <stdexcept>
@@ -90,6 +94,10 @@ public:
     size_t get_pool_block_size(size_t index) const;
     size_t get_pool_free_space(size_t index) const;
 
+#if PALLOC_DEBUG
+    size_t get_num_comitted_blocks() const;
+#endif
+
     // check if pointer belongs to this slab
     bool owns(void* ptr) const;
 
@@ -122,7 +130,7 @@ public:
     }
 
 private:
-    constexpr static size_t MAX_CACHED_SLABS = Tconfig::NUM_CACHED_SLABS;
+    [[nodiscard]] void* alloc_internal(size_t size);
 
     struct cache_entry
     {
@@ -156,8 +164,6 @@ private:
                 storage[i].invalidate();
         }
     };
-
-    inline thread_local static std::array<cache_entry, MAX_CACHED_SLABS> caches{};
 
     cache_entry* get_or_create_cache_entry()
     {
@@ -206,6 +212,11 @@ private:
             entry.storage[i].batch_size = Tconfig::SIZE_CLASS_CONFIG[i].batch_size;
     }
 
+    // used for TLC
+    constexpr static size_t MAX_CACHED_SLABS = Tconfig::NUM_CACHED_SLABS;
+
+    inline thread_local static std::array<cache_entry, MAX_CACHED_SLABS> caches{};
+
     palloc_atomic<size_t> epoch;
     std::array<pool_view, Tconfig::NUM_SIZE_CLASSES> shared_pools;
 
@@ -214,6 +225,11 @@ private:
 
     inline static palloc_atomic<size_t> next_slab_id{0};
     size_t slab_id;
+
+    // keeps track of how many pages are comitted in memory
+    size_t m_committed_pages;
+    uint64_t* m_bitmap;
+    size_t m_bitmap_size; // in bytes
 };
 
 template<slab_config_type Tconfig>
@@ -223,6 +239,8 @@ slab<Tconfig>::slab() : epoch(0), slab_id(next_slab_id.fetch_add(1, std::memory_
     size_t page_size = AL::platform_mem::page_size();
     size_t rounded_raw_size = ((raw_size + page_size - 1) / page_size) * page_size;
     m_region_size = Tconfig::VIRTUAL_MEM_PREALLOC_SIZE < rounded_raw_size ? rounded_raw_size : Tconfig::VIRTUAL_MEM_PREALLOC_SIZE;
+
+    m_committed_pages = (raw_size + page_size - 1) / page_size;
 
     void* mem = AL::platform_mem::virtual_alloc(m_region_size);
     if (mem == nullptr)
@@ -236,9 +254,29 @@ slab<Tconfig>::slab() : epoch(0), slab_id(next_slab_id.fetch_add(1, std::memory_
         throw std::runtime_error("slab virtual_commit failed: not enough physical memory");
     }
 
+    // allocate the payload
     m_region = static_cast<std::byte*>(mem);
 
+    // allocate the bitmap in another region
+    size_t bitmap_size = 0;
+    for (size_t i = 0; i < Tconfig::NUM_SIZE_CLASSES; i++)
+    {
+        size_t reserved = Tconfig::RESERVED_BLOCKS[i];
+        size_t bitmap_words = (reserved + 63) / 64;
+        bitmap_size += bitmap_words * sizeof(uint64_t);
+    }
+
+    void* bitmap_base = AL::platform_mem::alloc(bitmap_size);
+    if (!bitmap_base)
+        throw std::bad_alloc();
+
+    m_bitmap = static_cast<uint64_t*>(bitmap_base);
+    m_bitmap_size = bitmap_size;
+
+    std::memset(bitmap_base, 0, bitmap_size);
+
     // carve sub-regions for each pool
+    std::byte* bitmap_cursor = static_cast<std::byte*>(bitmap_base);
     std::byte* cursor = m_region;
     for (size_t i = 0; i < Tconfig::NUM_SIZE_CLASSES; ++i)
     {
@@ -250,9 +288,16 @@ slab<Tconfig>::slab() : epoch(0), slab_id(next_slab_id.fetch_add(1, std::memory_
         addr = (addr + mask) & ~mask;
         cursor = reinterpret_cast<std::byte*>(addr);
 
-        shared_pools[i].init_from_region(cursor, sc.byte_size, sc.num_blocks);
+        size_t bitmap_words = (Tconfig::RESERVED_BLOCKS[i] + 63) / 64;
+        size_t bitmap_bytes = bitmap_words * sizeof(uint64_t);
+
+        shared_pools[i].init_from_region(cursor, bitmap_cursor, sc.byte_size, sc.num_blocks);
+
+        bitmap_cursor += bitmap_bytes;
         cursor += pool_view::required_region_size(sc.byte_size, sc.num_blocks);
     }
+
+    // std::cout << Tconfig::SIZE_CLASS_CONFIG[2].chunk_size << '\n';
 }
 
 template<slab_config_type Tconfig>
@@ -286,6 +331,12 @@ slab<Tconfig>::~slab()
         AL::platform_mem::free(m_region, m_region_size);
         m_region = nullptr;
     }
+
+    if (m_bitmap != nullptr)
+    {
+        AL::platform_mem::free(m_bitmap, m_bitmap_size);
+        m_bitmap = nullptr;
+    }
 }
 
 template<slab_config_type Tconfig>
@@ -297,6 +348,22 @@ void* slab<Tconfig>::alloc(size_t size)
         return nullptr;
 
     // route the size of allocation to the correct pool
+    void* ptr = alloc_internal(size);
+    if (ptr == nullptr)
+    {
+        // commit_more_memory(size);
+
+        // ptr = alloc_internal(size); // if this also return null, then there is something wrong logically, or no more physical memory exists
+    }
+    else
+    {
+        return ptr;
+    }
+}
+
+template<slab_config_type Tconfig>
+void* slab<Tconfig>::alloc_internal(size_t size)
+{
     size_t index = size_to_index(size);
     if (index == (size_t)-1) [[unlikely]]
         return nullptr;
@@ -462,6 +529,14 @@ size_t slab<Tconfig>::get_pool_free_space(size_t index) const
         return 0;
     return shared_pools[index].free_count() * shared_pools[index].block_size();
 }
+
+#if PALLOC_DEBUG
+template<slab_config_type Tconfig>
+size_t slab<Tconfig>::get_num_comitted_blocks() const
+{
+    return 0;
+}
+#endif
 
 template<slab_config_type Tconfig>
 bool slab<Tconfig>::owns(void* ptr) const

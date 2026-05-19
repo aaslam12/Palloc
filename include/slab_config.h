@@ -17,6 +17,7 @@ struct size_class
     std::size_t byte_size;
     std::size_t num_blocks;
     std::size_t batch_size;
+    std::size_t chunk_size = byte_size * num_blocks;
 };
 
 constexpr bool is_power_of_two(std::size_t x) noexcept
@@ -81,6 +82,35 @@ struct slab_config
     static constexpr std::size_t NUM_CACHED_CLASSES = Tnum_cached_classes;
     static constexpr std::size_t NUM_CACHED_SLABS = Tnum_cached_slabs;
     static constexpr std::size_t VIRTUAL_MEM_PREALLOC_SIZE = Tvirtual_mem_prealloc_size;
+
+    static consteval auto compute_total_initial_size()
+    {
+        size_t total_initial_size = 0;
+        for (size_t i = 0; i < Tnum; i++)
+        {
+            total_initial_size += SIZE_CLASS_CONFIG[i].chunk_size;
+        }
+
+        return total_initial_size;
+    }
+
+    static constexpr size_t TOTAL_INITIAL_SIZE = compute_total_initial_size();
+
+    // calculates the virtual ceiling for each size class
+    static consteval auto compute_reserved_blocks()
+    {
+        std::array<std::size_t, Tnum> result;
+
+        for (size_t i = 0; i < Tnum; i++)
+        {
+            // getting the ratio of this class and then extrapolating to the VIRTUAL_MEM_PREALLOC_SIZE
+            result[i] = (SIZE_CLASS_CONFIG[i].chunk_size * VIRTUAL_MEM_PREALLOC_SIZE) / TOTAL_INITIAL_SIZE;
+        }
+
+        return result;
+    }
+
+    static constexpr std::array<std::size_t, Tnum> RESERVED_BLOCKS = compute_reserved_blocks();
 
     static constexpr std::size_t INDEX_SPAN =
         std::bit_width(Tsize_class_config[Tnum - 1].byte_size) - std::bit_width(Tsize_class_config[0].byte_size) + 1;
