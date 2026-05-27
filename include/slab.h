@@ -5,12 +5,9 @@
 #include "pool_view.h"
 #include "slab_config.h"
 #include <cassert>
-#include <cmath>
 #include <cstddef>
 #include <cstdint>
 #include <cstring>
-#include <iostream>
-#include <istream>
 #include <new>
 #include <span>
 #include <stdexcept>
@@ -82,6 +79,11 @@ public:
 
     // NOT thread safe
     void reset();
+
+    // Decommit physical pages for all fully-empty grown chunks across all pools.
+    // NOT thread-safe: call only when no other threads are allocating/freeing.
+    // Shrinks RSS back toward the initial committed footprint.
+    void shrink() noexcept;
 
     void free(void* ptr, size_t size);
 
@@ -220,16 +222,20 @@ private:
     palloc_atomic<size_t> epoch;
     std::array<pool_view, Tconfig::NUM_SIZE_CLASSES> shared_pools;
 
-    std::byte* m_region = nullptr;
-    size_t m_region_size = 0; // total size of the contiguous region backing all pools in raw bytes
+    std::byte* m_region      = nullptr;
+    size_t     m_region_size = 0;
+
+    // per-pool payload base addresses — needed to compute virtual_commit offset during growth
+    std::array<std::byte*, Tconfig::NUM_SIZE_CLASSES> m_pool_bases{};
 
     inline static palloc_atomic<size_t> next_slab_id{0};
     size_t slab_id;
 
-    // keeps track of how many pages are comitted in memory
-    size_t m_committed_pages;
-    uint64_t* m_bitmap;
-    size_t m_bitmap_size; // in bytes
+    void* m_bitmap       = nullptr;
+    size_t m_bitmap_size = 0;
+
+    void grow_pool(size_t index) noexcept;
+    void decommit_chunk(size_t index, size_t chunk_idx) noexcept;
 };
 
 template<slab_config_type Tconfig>
@@ -240,64 +246,65 @@ slab<Tconfig>::slab() : epoch(0), slab_id(next_slab_id.fetch_add(1, std::memory_
     size_t rounded_raw_size = ((raw_size + page_size - 1) / page_size) * page_size;
     m_region_size = Tconfig::VIRTUAL_MEM_PREALLOC_SIZE < rounded_raw_size ? rounded_raw_size : Tconfig::VIRTUAL_MEM_PREALLOC_SIZE;
 
-    m_committed_pages = (raw_size + page_size - 1) / page_size;
-
     void* mem = AL::platform_mem::virtual_alloc(m_region_size);
     if (mem == nullptr)
-    {
-        throw std::runtime_error("slab virtual_alloc failed: could not allocate any more virtual memory");
-    }
+        throw std::runtime_error("slab virtual_alloc failed");
 
     if (!AL::platform_mem::virtual_commit(mem, raw_size))
     {
-        AL::platform_mem::free(mem, m_region_size); // constructor failed to commit reserved pages, release virt mem
+        AL::platform_mem::free(mem, m_region_size);
         throw std::runtime_error("slab virtual_commit failed: not enough physical memory");
     }
 
-    // allocate the payload
     m_region = static_cast<std::byte*>(mem);
 
-    // allocate the bitmap in another region
+    // flat bitmap: one contiguous alloc covering all classes' virtual ceilings
     size_t bitmap_size = 0;
     for (size_t i = 0; i < Tconfig::NUM_SIZE_CLASSES; i++)
+        bitmap_size += ((Tconfig::VIRTUAL_BLOCK_CEILINGS[i] + 63) / 64) * sizeof(uint64_t);
+
+    m_bitmap = AL::platform_mem::alloc(bitmap_size);
+    if (!m_bitmap)
     {
-        size_t reserved = Tconfig::RESERVED_BLOCKS[i];
-        size_t bitmap_words = (reserved + 63) / 64;
-        bitmap_size += bitmap_words * sizeof(uint64_t);
-    }
-
-    void* bitmap_base = AL::platform_mem::alloc(bitmap_size);
-    if (!bitmap_base)
+        AL::platform_mem::free(mem, m_region_size);
         throw std::bad_alloc();
-
-    m_bitmap = static_cast<uint64_t*>(bitmap_base);
+    }
+    // zero only the initially-used bitmap words per class — the rest will be zeroed on demand
+    // (platform_mem::alloc returns mapped memory that the OS zeros on first page fault)
+    {
+        std::byte* bmap_cursor = static_cast<std::byte*>(m_bitmap);
+        for (size_t i = 0; i < Tconfig::NUM_SIZE_CLASSES; i++)
+        {
+            size_t initial_words = (Tconfig::SIZE_CLASS_CONFIG[i].num_blocks + 63) / 64;
+            std::memset(bmap_cursor, 0, initial_words * sizeof(uint64_t));
+            size_t ceiling_words = (Tconfig::VIRTUAL_BLOCK_CEILINGS[i] + 63) / 64;
+            bmap_cursor += ceiling_words * sizeof(uint64_t);
+        }
+    }
     m_bitmap_size = bitmap_size;
 
-    std::memset(bitmap_base, 0, bitmap_size);
-
-    // carve sub-regions for each pool
-    std::byte* bitmap_cursor = static_cast<std::byte*>(bitmap_base);
+    // carve payload and bitmap sub-regions per pool
+    std::byte* bitmap_cursor = static_cast<std::byte*>(m_bitmap);
     std::byte* cursor = m_region;
     for (size_t i = 0; i < Tconfig::NUM_SIZE_CLASSES; ++i)
     {
         auto& sc = Tconfig::SIZE_CLASS_CONFIG[i];
 
-        // align cursor to block_size
-        auto addr = reinterpret_cast<uintptr_t>(cursor);
-        uintptr_t mask = sc.byte_size - 1;
-        addr = (addr + mask) & ~mask;
+        uintptr_t addr = reinterpret_cast<uintptr_t>(cursor);
+        addr = (addr + sc.byte_size - 1) & ~(sc.byte_size - 1);
         cursor = reinterpret_cast<std::byte*>(addr);
 
-        size_t bitmap_words = (Tconfig::RESERVED_BLOCKS[i] + 63) / 64;
-        size_t bitmap_bytes = bitmap_words * sizeof(uint64_t);
+        m_pool_bases[i] = cursor;
 
-        shared_pools[i].init_from_region(cursor, bitmap_cursor, sc.byte_size, sc.num_blocks);
-
+        size_t bitmap_bytes = ((Tconfig::VIRTUAL_BLOCK_CEILINGS[i] + 63) / 64) * sizeof(uint64_t);
+        shared_pools[i].init_from_region(cursor, bitmap_cursor,
+                                          sc.byte_size,
+                                          sc.num_blocks,
+                                          Tconfig::VIRTUAL_BLOCK_CEILINGS[i],
+                                          sc.num_blocks);
         bitmap_cursor += bitmap_bytes;
-        cursor += pool_view::required_region_size(sc.byte_size, sc.num_blocks);
+        cursor += sc.byte_size * sc.num_blocks;
     }
-
-    // std::cout << Tconfig::SIZE_CLASS_CONFIG[2].chunk_size << '\n';
 }
 
 template<slab_config_type Tconfig>
@@ -347,18 +354,49 @@ void* slab<Tconfig>::alloc(size_t size)
     if (Tconfig::SIZE_CLASS_CONFIG[Tconfig::NUM_SIZE_CLASSES - 1].byte_size < size) [[unlikely]]
         return nullptr;
 
-    // route the size of allocation to the correct pool
-    void* ptr = alloc_internal(size);
-    if (ptr == nullptr)
-    {
-        // commit_more_memory(size);
+    size_t index = size_to_index(size);
+    if (index == static_cast<size_t>(-1)) [[unlikely]]
+        return nullptr;
 
-        // ptr = alloc_internal(size); // if this also return null, then there is something wrong logically, or no more physical memory exists
-    }
-    else
-    {
+    void* ptr = alloc_internal(size);
+    if (ptr != nullptr) [[likely]]
         return ptr;
+
+    // pool exhausted — attempt to grow
+    grow_pool(index);
+    return alloc_internal(size);
+}
+
+template<slab_config_type Tconfig>
+void slab<Tconfig>::grow_pool(size_t index) noexcept
+{
+    pool_view& p = shared_pools[index];
+
+    if (p.committed_blocks() >= p.virtual_block_ceiling())
+        return; // truly full
+
+    size_t old = 0;
+    if (p.try_reserve_chunk(old))
+    {
+        // won the reservation — commit pages BEFORE making them visible
+        size_t block_size   = Tconfig::SIZE_CLASS_CONFIG[index].byte_size;
+        size_t chunk_blocks = p.blocks_per_chunk();
+        std::byte* chunk_base = m_pool_bases[index] + old * block_size;
+        AL::platform_mem::virtual_commit(chunk_base, chunk_blocks * block_size);
+        // now make the new blocks visible to alloc scans
+        p.advance_committed(old + chunk_blocks);
     }
+    // whether we won or lost, caller retries alloc
+}
+
+template<slab_config_type Tconfig>
+void slab<Tconfig>::decommit_chunk(size_t index, size_t chunk_idx) noexcept
+{
+    pool_view& p          = shared_pools[index];
+    size_t block_size     = Tconfig::SIZE_CLASS_CONFIG[index].byte_size;
+    size_t chunk_blocks   = p.blocks_per_chunk();
+    std::byte* chunk_base = m_pool_bases[index] + chunk_idx * chunk_blocks * block_size;
+    AL::platform_mem::virtual_free(chunk_base, chunk_blocks * block_size);
 }
 
 template<slab_config_type Tconfig>
@@ -416,6 +454,36 @@ void slab<Tconfig>::reset()
 }
 
 template<slab_config_type Tconfig>
+void slab<Tconfig>::shrink() noexcept
+{
+    for (size_t i = 0; i < Tconfig::NUM_SIZE_CLASSES; ++i)
+    {
+        pool_view& p = shared_pools[i];
+        size_t committed  = p.committed_blocks();
+        size_t chunk_size = p.blocks_per_chunk();
+        size_t block_size = Tconfig::SIZE_CLASS_CONFIG[i].byte_size;
+
+        if (chunk_size == 0 || committed <= chunk_size)
+            continue; // only the initial chunk — nothing grown to decommit
+
+        size_t num_chunks = committed / chunk_size;
+        size_t words_per_chunk = (chunk_size + 63) / 64;
+
+        // scan grown chunks (skip chunk 0 = initial commit)
+        for (size_t c = num_chunks; c-- > 1; )
+        {
+            size_t word_start = c * words_per_chunk;
+            if (!p.is_chunk_empty(word_start, words_per_chunk))
+                continue;
+
+            // chunk is empty — decommit payload and roll back committed_blocks
+            decommit_chunk(i, c);
+            p.decommit_blocks(c * chunk_size, chunk_size);
+        }
+    }
+}
+
+template<slab_config_type Tconfig>
 void slab<Tconfig>::free(void* ptr, size_t size)
 {
     if (size == 0 || size == (size_t)-1) [[unlikely]]
@@ -442,7 +510,8 @@ void slab<Tconfig>::free(void* ptr, size_t size)
         if (cache.is_full()) [[unlikely]]
         {
             // flush tail segment first, keep recent entries hot in TLC
-            p.free_batch(std::span<void*>(cache.objects.data() + (cache.current - cache.batch_size), cache.batch_size));
+            auto flush_span = std::span<void*>(cache.objects.data() + (cache.current - cache.batch_size), cache.batch_size);
+            p.free_batch(flush_span);
             cache.current -= cache.batch_size;
         }
         cache.push(ptr);

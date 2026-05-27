@@ -31,6 +31,12 @@ public:
     // Atomically claim up to count free slots. Writes slot indices into out[]. Returns count claimed.
     size_t alloc_bits_batch(size_t count, size_t out[]) noexcept;
 
+    // Atomically claim one free slot. Scans upto the limit provided. Returns slot index, or (size_t)-1 if full.
+    [[nodiscard]] size_t alloc_bit(size_t limit) noexcept;
+
+    // Atomically claim up to count free slots. Scans upto the limit provided. Writes slot indices into out[]. Returns count claimed.
+    size_t alloc_bits_batch(size_t count, size_t limit, size_t out[]) noexcept;
+
     // Atomically free a slot.
     void free_bit(size_t slot) noexcept;
 
@@ -40,6 +46,10 @@ public:
     // Reset all slots to free. Not thread-safe.
     void reset() noexcept;
 
+    // Reset only the first active_words words (covering active_slots slots). Not thread-safe.
+    // Used by pool_view when the bitmap covers the full virtual ceiling but only part is committed.
+    void reset_to(size_t active_words, size_t active_slots) noexcept;
+
     // Returns true if every bit in words [word_start, word_start + word_count) is 0.
     [[nodiscard]] bool is_range_empty(size_t word_start, size_t word_count) const noexcept;
 
@@ -48,6 +58,8 @@ public:
     void clear_slot(size_t slot) noexcept;
 
     [[nodiscard]] size_t free_count() const noexcept;
+    void set_free_count(size_t n) noexcept;
+    void fetch_add_free_count(size_t n) noexcept;
     [[nodiscard]] size_t num_slots() const noexcept;
     [[nodiscard]] size_t num_words() const noexcept;
     [[nodiscard]] bool is_init() const noexcept;

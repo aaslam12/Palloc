@@ -97,20 +97,29 @@ struct slab_config
     static constexpr size_t TOTAL_INITIAL_SIZE = compute_total_initial_size();
 
     // calculates the virtual ceiling for each size class
-    static consteval auto compute_reserved_blocks()
+    static consteval auto compute_virtual_block_ceilings()
     {
         std::array<std::size_t, Tnum> result;
 
+        // If the initial commit already fills the virtual reservation, no growth headroom.
+        // This keeps test configs with tiny num_blocks and default prealloc from growing forever.
+        if (TOTAL_INITIAL_SIZE >= VIRTUAL_MEM_PREALLOC_SIZE)
+        {
+            for (size_t i = 0; i < Tnum; i++)
+                result[i] = SIZE_CLASS_CONFIG[i].num_blocks;
+            return result;
+        }
+
         for (size_t i = 0; i < Tnum; i++)
         {
-            // getting the ratio of this class and then extrapolating to the VIRTUAL_MEM_PREALLOC_SIZE
-            result[i] = (SIZE_CLASS_CONFIG[i].chunk_size * VIRTUAL_MEM_PREALLOC_SIZE) / TOTAL_INITIAL_SIZE;
+            size_t ceiling = (SIZE_CLASS_CONFIG[i].chunk_size * VIRTUAL_MEM_PREALLOC_SIZE) / TOTAL_INITIAL_SIZE / SIZE_CLASS_CONFIG[i].byte_size;
+            result[i] = ceiling > SIZE_CLASS_CONFIG[i].num_blocks ? ceiling : SIZE_CLASS_CONFIG[i].num_blocks;
         }
 
         return result;
     }
 
-    static constexpr std::array<std::size_t, Tnum> RESERVED_BLOCKS = compute_reserved_blocks();
+    static constexpr std::array<std::size_t, Tnum> VIRTUAL_BLOCK_CEILINGS = compute_virtual_block_ceilings();
 
     static constexpr std::size_t INDEX_SPAN =
         std::bit_width(Tsize_class_config[Tnum - 1].byte_size) - std::bit_width(Tsize_class_config[0].byte_size) + 1;
@@ -153,11 +162,8 @@ struct slab_config
             std::size_t mask = sc.byte_size - 1;
             total = (total + mask) & ~mask;
 
-            // add region for this pool
-            std::size_t bitmap_words = (sc.num_blocks + 63) / 64;
-            std::size_t bitmap_bytes = bitmap_words * sizeof(uint64_t);
-            std::size_t aligned_offset = ((bitmap_bytes + sc.byte_size - 1) / sc.byte_size) * sc.byte_size;
-            total += aligned_offset + sc.byte_size * sc.num_blocks;
+            // payload only — bitmap is allocated separately
+            total += sc.byte_size * sc.num_blocks;
         }
         return total;
     }

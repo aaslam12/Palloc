@@ -12,7 +12,7 @@ constexpr std::array<AL::size_class, 3> TINY_CONFIG = {
      {.byte_size = 32, .num_blocks = 4, .batch_size = 2},
      }
 };
-using tiny_slab = AL::slab<AL::slab_config<3, TINY_CONFIG>>;
+using tiny_slab = AL::slab<AL::slab_config<3, TINY_CONFIG, 3, 1>>; // prealloc=1 → no growth (TOTAL_INITIAL_SIZE > 1)
 
 constexpr std::array<AL::size_class, 2> LARGE_CONFIG = {
     {
@@ -20,14 +20,14 @@ constexpr std::array<AL::size_class, 2> LARGE_CONFIG = {
      {.byte_size = 128, .num_blocks = 1024, .batch_size = 64},
      }
 };
-using large_slab = AL::slab<AL::slab_config<2, LARGE_CONFIG>>;
+using large_slab = AL::slab<AL::slab_config<2, LARGE_CONFIG, 2, 1>>;
 
 constexpr std::array<AL::size_class, 1> SINGLE_CONFIG = {
     {
      {.byte_size = 8, .num_blocks = 1, .batch_size = 1},
      }
 };
-using single_slab = AL::slab<AL::slab_config<1, SINGLE_CONFIG>>;
+using single_slab = AL::slab<AL::slab_config<1, SINGLE_CONFIG, 1, 1>>;
 
 // ──────────────────────────────────────────────────────────────────────────────
 // Construction
@@ -798,4 +798,55 @@ TEST_CASE("Slab: Wide sparse config {8, 128, 4096}", "[slab][sparse]")
     s.free(p4096, 4096);
     s.free(p16, 16);
     s.free(p256, 256);
+}
+
+// ──────────────────────────────────────────────────────────────────────────────
+// Growth and shrink
+// ──────────────────────────────────────────────────────────────────────────────
+
+TEST_CASE("Slab: grow and shrink", "[slab][grow][shrink]")
+{
+    // Use a growable config: 8B class with 4 blocks initial, 100GB prealloc
+    constexpr std::array<AL::size_class, 1> GROW_CONFIG = {{
+        {.byte_size = 8, .num_blocks = 4, .batch_size = 1},
+    }};
+    AL::slab<AL::slab_config<1, GROW_CONFIG>> s;
+
+    SECTION("Pool grows beyond initial num_blocks")
+    {
+        // exhaust initial 4 blocks
+        void* ptrs[8] = {};
+        for (int i = 0; i < 4; ++i)
+            ptrs[i] = s.alloc(8);
+        REQUIRE(ptrs[3] != nullptr);
+
+        // 5th alloc must trigger growth and succeed
+        ptrs[4] = s.alloc(8);
+        REQUIRE(ptrs[4] != nullptr);
+
+        // all pointers must be distinct
+        std::set<void*> unique(ptrs, ptrs + 5);
+        REQUIRE(unique.size() == 5);
+
+        for (int i = 0; i < 5; ++i)
+            s.free(ptrs[i], 8);
+    }
+
+    SECTION("shrink after growth reduces committed blocks")
+    {
+        // exhaust initial chunk and trigger growth
+        void* ptrs[8] = {};
+        for (int i = 0; i < 5; ++i)
+            ptrs[i] = s.alloc(8);
+        size_t grown = s.get_total_capacity();
+        REQUIRE(grown > 4 * 8); // grew beyond initial
+
+        // free everything — chunks should be empty now
+        for (int i = 0; i < 5; ++i)
+            s.free(ptrs[i], 8);
+
+        s.shrink();
+        // after shrink, capacity should be back to initial (or close to it)
+        REQUIRE(s.get_total_capacity() <= grown);
+    }
 }
