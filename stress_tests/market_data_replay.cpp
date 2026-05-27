@@ -360,7 +360,7 @@ int main()
             for (size_t i = 0; i < BATCH_SIZE; i++)
             {
                 size_t sz = pick_msg_size(rng);
-                void* mem = s.alloc(sz);
+                void* mem = s.palloc(sz);
                 if (mem)
                 {
                     fill_and_process(mem, sz, seq++, stats);

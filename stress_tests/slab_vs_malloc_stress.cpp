@@ -58,7 +58,7 @@ int main()
                             size = 64;
                     }
 
-                    void* ptr = s.alloc(size);
+                    void* ptr = s.palloc(size);
                     if (ptr == nullptr)
                     {
                         std::cerr << "ERROR: Slab allocation failed at cycle " << cycle << ", iteration " << i << ", size " << size << '\n';
@@ -165,7 +165,7 @@ int main()
 
             for (int i = 0; i < RAPID_OPS; ++i)
             {
-                void* ptr = s.alloc(64);
+                void* ptr = s.palloc(64);
                 if (ptr == nullptr)
                 {
                     std::cerr << "ERROR: Slab allocation failed at iteration " << i << '\n';
@@ -235,7 +235,7 @@ int main()
             for (int i = 0; i < SMALL_OPS; ++i)
             {
                 size_t size = 8 + (i % 4) * 8; // 8, 16, 24, 32
-                void* ptr = s.alloc(size);
+                void* ptr = s.palloc(size);
                 if (ptr == nullptr)
                 {
                     std::cerr << "ERROR: Slab allocation failed at iteration " << i << ", size " << size << '\n';
@@ -331,7 +331,7 @@ int main()
                             size = 32;
                     }
 
-                    void* ptr = s.alloc(size);
+                    void* ptr = s.palloc(size);
                     if (ptr == nullptr)
                     {
                         std::cerr << "ERROR: Slab allocation failed at batch " << batch << ", iteration " << i << ", size " << size << '\n';

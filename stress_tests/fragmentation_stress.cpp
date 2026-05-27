@@ -260,7 +260,7 @@ int main()
         default_slab s{};
         results.push_back(run_fragmentation(
             "Slab (TLC)",
-            [&](size_t sz) -> void* { return s.alloc(sz); },
+            [&](size_t sz) -> void* { return s.palloc(sz); },
             [&](void* p, size_t sz) { s.free(p, sz); }));
     }
 

@@ -1,4 +1,5 @@
 #include "pool_view.h"
+#include <array>
 #include <bit>
 #include <cassert>
 #include <cstdint>
@@ -17,25 +18,32 @@ static size_t bitmap_alloc_bit(palloc_atomic<uint64_t>* words, size_t num_words,
         size_t h = hint.load(std::memory_order_relaxed);
         size_t start = (pass == 0) ? h : 0;
         size_t stop = (pass == 0) ? num_words : h;
+
         if (start >= num_words)
             stop = 0;
 
         for (size_t w = start; w < (pass == 0 ? num_words : stop); ++w)
         {
             uint64_t word = words[w].load(std::memory_order_relaxed);
+
             while (true)
             {
                 if (word == ~uint64_t(0))
                     break;
+
                 size_t bit = static_cast<size_t>(std::countr_zero(~word));
                 size_t slot = w * 64 + bit;
+
                 if (slot >= num_slots)
                     return static_cast<size_t>(-1);
+
                 uint64_t new_word = word | (uint64_t(1) << bit);
+
                 if (words[w].compare_exchange_weak(word, new_word, std::memory_order_acquire, std::memory_order_relaxed))
                 {
                     if (new_word == ~uint64_t(0))
                         hint.store(w + 1, std::memory_order_relaxed);
+
                     return slot;
                 }
             }
@@ -47,42 +55,52 @@ static size_t bitmap_alloc_bit(palloc_atomic<uint64_t>* words, size_t num_words,
 static size_t bitmap_alloc_batch(palloc_atomic<uint64_t>* words, size_t num_words, size_t num_slots, size_t count, size_t out[]) noexcept
 {
     size_t found = 0;
+
     for (size_t w = 0; w < num_words && found < count; ++w)
     {
         uint64_t word = words[w].load(std::memory_order_relaxed);
         uint64_t claimed = 0;
         size_t local = 0;
         uint64_t new_word = 0;
+
         do
         {
             claimed = 0;
             local = 0;
+
             if (word == ~uint64_t(0))
                 break;
+
             uint64_t free_bits = ~word;
             size_t tmp = found;
+
             while (free_bits && tmp < count)
             {
                 size_t bit = static_cast<size_t>(std::countr_zero(free_bits));
                 size_t slot = w * 64 + bit;
+
                 if (slot >= num_slots)
                 {
                     free_bits = 0;
                     break;
                 }
+
                 claimed |= uint64_t(1) << bit;
                 free_bits &= free_bits - 1;
                 ++tmp;
                 ++local;
             }
+
             if (!claimed)
                 break;
+
             new_word = word | claimed;
         }
         while (!words[w].compare_exchange_weak(word, new_word, std::memory_order_acquire, std::memory_order_relaxed));
 
         if (!claimed)
             continue;
+
         uint64_t bits = claimed;
         while (bits)
         {
@@ -190,6 +208,7 @@ void pool_view::init_from_region(void* base, size_t block_size, size_t block_cou
     size_t rem = required_region_size(block_size, block_count) - bitmap_bytes;
     void* aligned = std::align(block_size, block_size * block_count, payload, rem);
     assert(aligned);
+
     m_memory = static_cast<std::byte*>(aligned);
 }
 
@@ -208,11 +227,13 @@ void pool_view::init_from_region(void* base,
     m_block_shift = static_cast<size_t>(std::countr_zero(block_size));
     m_blocks_per_chunk = blocks_per_chunk;
     m_words_per_chunk = (blocks_per_chunk + 63) / 64;
+
     m_committed_blocks.store(committed_blocks, std::memory_order_relaxed);
     m_reserved_blocks.store(committed_blocks, std::memory_order_relaxed);
     m_virtual_block_ceiling = virtual_block_ceiling;
     m_free_count.store(committed_blocks, std::memory_order_relaxed);
     m_hint.store(0, std::memory_order_relaxed);
+
     m_chunk_bitmaps = chunk_bitmaps;
     m_embedded_bitmap = nullptr;
     m_embedded_num_words = 0;
@@ -224,6 +245,7 @@ void pool_view::init_from_region(void* base,
 size_t pool_view::alloc_from_chunk(size_t chunk_idx) noexcept
 {
     palloc_atomic<uint64_t>* words = m_chunk_bitmaps[chunk_idx];
+
     if (!words)
         return static_cast<size_t>(-1);
 
@@ -235,16 +257,22 @@ size_t pool_view::alloc_from_chunk(size_t chunk_idx) noexcept
     for (size_t w = 0; w < m_words_per_chunk; ++w)
     {
         uint64_t word = words[w].load(std::memory_order_relaxed);
+
         while (true)
         {
             uint64_t effective = (w == last_w && tail) ? (word | (~uint64_t(0) << tail)) : word;
+
             if (effective == ~uint64_t(0))
                 break;
+
             size_t bit = static_cast<size_t>(std::countr_zero(~effective));
             size_t slot = w * 64 + bit;
+
             if (slot >= m_blocks_per_chunk)
                 return static_cast<size_t>(-1);
+
             uint64_t new_word = word | (uint64_t(1) << bit);
+
             if (words[w].compare_exchange_weak(word, new_word, std::memory_order_acquire, std::memory_order_relaxed))
                 return chunk_idx * m_blocks_per_chunk + slot;
         }
@@ -268,29 +296,36 @@ size_t pool_view::alloc_batch_from_chunk(size_t chunk_idx, size_t count, size_t 
         uint64_t claimed = 0;
         size_t local = 0;
         uint64_t new_word = 0;
+
         do
         {
             claimed = 0;
             local = 0;
             uint64_t effective = (w == last_w && tail) ? (word | (~uint64_t(0) << tail)) : word;
+
             if (effective == ~uint64_t(0))
                 break;
+
             uint64_t free_bits = ~effective;
             size_t tmp = found;
+
             while (free_bits && tmp < count)
             {
                 size_t bit = static_cast<size_t>(std::countr_zero(free_bits));
                 size_t slot = w * 64 + bit;
+
                 if (slot >= m_blocks_per_chunk)
                 {
                     free_bits = 0;
                     break;
                 }
+
                 claimed |= uint64_t(1) << bit;
                 free_bits &= free_bits - 1;
                 ++tmp;
                 ++local;
             }
+
             if (!claimed)
                 break;
             new_word = word | claimed;
@@ -299,6 +334,7 @@ size_t pool_view::alloc_batch_from_chunk(size_t chunk_idx, size_t count, size_t 
 
         if (!claimed)
             continue;
+
         uint64_t bits = claimed;
         while (bits)
         {
@@ -328,6 +364,7 @@ void* pool_view::alloc() noexcept
         // two-level: scan committed chunks via m_chunk_bitmaps
         size_t committed = m_committed_blocks.load(std::memory_order_acquire);
         size_t num_chunks = (committed + m_blocks_per_chunk - 1) / m_blocks_per_chunk;
+
         // scan from hint chunk
         size_t hint_chunk = m_hint.load(std::memory_order_relaxed);
         for (int pass = 0; pass < 2; ++pass)
@@ -336,6 +373,7 @@ void* pool_view::alloc() noexcept
             size_t stop = (pass == 0) ? num_chunks : hint_chunk;
             if (start >= num_chunks)
                 stop = 0;
+
             for (size_t c = start; c < (pass == 0 ? num_chunks : stop); ++c)
             {
                 slot = alloc_from_chunk(c);
@@ -354,8 +392,10 @@ void* pool_view::alloc() noexcept
     {
         // embedded single-chunk path
         slot = bitmap_alloc_bit(m_embedded_bitmap, m_embedded_num_words, m_blocks_per_chunk, m_hint);
+
         if (slot == static_cast<size_t>(-1))
             return nullptr;
+
         m_free_count.fetch_sub(1, std::memory_order_relaxed);
         return m_memory + (slot << m_block_shift);
     }
@@ -371,6 +411,7 @@ size_t pool_view::alloc_batch(size_t count, void* out[]) noexcept
     {
         size_t committed = m_committed_blocks.load(std::memory_order_acquire);
         size_t num_chunks = (committed + m_blocks_per_chunk - 1) / m_blocks_per_chunk;
+
         for (size_t c = 0; c < num_chunks && found < n; ++c)
             found += alloc_batch_from_chunk(c, n - found, slots + found);
     }
@@ -380,6 +421,7 @@ size_t pool_view::alloc_batch(size_t count, void* out[]) noexcept
     }
 
     m_free_count.fetch_sub(found, std::memory_order_relaxed);
+
     for (size_t i = 0; i < found; ++i)
         out[i] = m_memory + (slots[i] << m_block_shift);
     return found;
@@ -414,17 +456,24 @@ void pool_view::free_batch(std::span<void*> ptrs) noexcept
     if (m_chunk_bitmaps)
     {
         // accumulate masks per (chunk, word) then flush with one fetch_and per word
-        struct Entry { size_t chunk; size_t word; uint64_t mask; };
-        Entry entries[128];
+        struct entry
+        {
+            size_t chunk;
+            size_t word;
+            uint64_t mask;
+        };
+
+        std::array<entry, 128> entries;
         size_t n = 0;
         for (void* ptr : ptrs)
         {
-            if (!ptr) continue;
+            if (!ptr)
+                continue;
             assert(owns(ptr));
-            size_t slot  = static_cast<size_t>(static_cast<std::byte*>(ptr) - m_memory) >> m_block_shift;
+            size_t slot = static_cast<size_t>(static_cast<std::byte*>(ptr) - m_memory) >> m_block_shift;
             size_t chunk = slot / m_blocks_per_chunk;
-            size_t bit   = slot % m_blocks_per_chunk;
-            size_t word  = bit >> 6;
+            size_t bit = slot % m_blocks_per_chunk;
+            size_t word = bit >> 6;
             uint64_t mask = uint64_t(1) << (bit & 63);
             bool merged = false;
             for (size_t i = 0; i < n; ++i)
@@ -437,8 +486,9 @@ void pool_view::free_batch(std::span<void*> ptrs) noexcept
                 }
             }
             if (!merged && n < 128)
-                entries[n++] = {chunk, word, mask};
+                entries[n++] = {.chunk = chunk, .word = word, .mask = mask};
         }
+
         for (size_t i = 0; i < n; ++i)
         {
             palloc_atomic<uint64_t>* words = m_chunk_bitmaps[entries[i].chunk];
@@ -450,8 +500,11 @@ void pool_view::free_batch(std::span<void*> ptrs) noexcept
     {
         for (void* ptr : ptrs)
         {
-            if (!ptr) continue;
+            if (!ptr)
+                continue;
+
             assert(owns(ptr));
+
             size_t slot = static_cast<size_t>(static_cast<std::byte*>(ptr) - m_memory) >> m_block_shift;
             bitmap_free_bit(m_embedded_bitmap, slot);
         }
@@ -465,24 +518,30 @@ void pool_view::reset() noexcept
     {
         size_t committed = m_committed_blocks.load(std::memory_order_relaxed);
         size_t num_chunks = (committed + m_blocks_per_chunk - 1) / m_blocks_per_chunk;
+
         for (size_t c = 0; c < num_chunks; ++c)
         {
             palloc_atomic<uint64_t>* words = m_chunk_bitmaps[c];
             if (!words)
                 continue;
+
             size_t tail = m_blocks_per_chunk % 64;
             std::memset(words, 0, m_words_per_chunk * sizeof(uint64_t));
+
             if (tail)
                 words[m_words_per_chunk - 1].store(~uint64_t(0) << tail, std::memory_order_relaxed);
         }
+
         m_free_count.store(committed, std::memory_order_relaxed);
     }
     else
     {
         size_t tail = m_blocks_per_chunk % 64;
         std::memset(m_embedded_bitmap, 0, m_embedded_num_words * sizeof(uint64_t));
+
         if (tail)
             m_embedded_bitmap[m_embedded_num_words - 1].store(~uint64_t(0) << tail, std::memory_order_relaxed);
+
         m_free_count.store(m_blocks_per_chunk, std::memory_order_relaxed);
     }
     m_hint.store(0, std::memory_order_relaxed);
@@ -494,8 +553,10 @@ bool pool_view::try_reserve_chunk(size_t& old_committed) noexcept
 {
     old_committed = m_committed_blocks.load(std::memory_order_acquire);
     size_t next = old_committed + m_blocks_per_chunk;
+
     if (next > m_virtual_block_ceiling)
         return false;
+
     size_t expected = old_committed;
     return m_reserved_blocks.compare_exchange_strong(expected, next, std::memory_order_acquire, std::memory_order_relaxed);
 }
@@ -514,6 +575,7 @@ bool pool_view::is_chunk_empty(size_t chunk_idx) const noexcept
     palloc_atomic<uint64_t>* words = m_chunk_bitmaps ? m_chunk_bitmaps[chunk_idx] : nullptr;
     if (!words)
         return true; // already decommitted
+
     return bitmap_is_empty(words, m_words_per_chunk);
 }
 
@@ -522,6 +584,7 @@ void pool_view::decommit_blocks(size_t new_committed) noexcept
     size_t old = m_committed_blocks.load(std::memory_order_relaxed);
     if (old > new_committed)
         m_free_count.fetch_sub(old - new_committed, std::memory_order_relaxed);
+
     m_reserved_blocks.store(new_committed, std::memory_order_relaxed);
     m_committed_blocks.store(new_committed, std::memory_order_relaxed);
 }
@@ -532,38 +595,47 @@ size_t pool_view::free_count() const noexcept
 {
     return m_free_count.load(std::memory_order_relaxed);
 }
+
 size_t pool_view::block_count() const noexcept
 {
     return m_committed_blocks.load(std::memory_order_relaxed);
 }
+
 size_t pool_view::block_size() const noexcept
 {
     return m_block_size;
 }
+
 size_t pool_view::capacity() const noexcept
 {
     return m_block_size * m_committed_blocks.load(std::memory_order_relaxed);
 }
+
 size_t pool_view::committed_blocks() const noexcept
 {
     return m_committed_blocks.load(std::memory_order_relaxed);
 }
+
 size_t pool_view::virtual_block_ceiling() const noexcept
 {
     return m_virtual_block_ceiling;
 }
+
 size_t pool_view::blocks_per_chunk() const noexcept
 {
     return m_blocks_per_chunk;
 }
+
 bool pool_view::is_initialized() const noexcept
 {
     return m_memory != nullptr;
 }
+
 std::byte* pool_view::memory_start() const noexcept
 {
     return m_memory;
 }
+
 std::byte* pool_view::memory_end() const noexcept
 {
     if (!m_memory)
@@ -577,8 +649,10 @@ bool pool_view::owns(const void* ptr) const noexcept
         return false;
     auto p = static_cast<const std::byte*>(ptr);
     size_t committed = m_committed_blocks.load(std::memory_order_relaxed);
+
     if (p < m_memory || p >= m_memory + m_block_size * committed)
         return false;
+
     return (static_cast<size_t>(p - m_memory) & (m_block_size - 1)) == 0;
 }
 

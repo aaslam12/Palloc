@@ -47,7 +47,7 @@ int main()
             auto t0 = std::chrono::high_resolution_clock::now();
             for (size_t i = 0; i < ops; ++i)
             {
-                void* p = s.alloc(size);
+                void* p = s.palloc(size);
                 s.free(p, size);
             }
             auto t1 = std::chrono::high_resolution_clock::now();
@@ -81,7 +81,7 @@ int main()
         for (size_t c = 0; c < cycles; ++c)
         {
             for (size_t i = 0; i < hold_count; ++i)
-                held[i] = s.alloc(32);
+                held[i] = s.palloc(32);
             for (size_t i = 0; i < hold_count; ++i)
                 s.free(held[i], 32);
         }
@@ -116,7 +116,7 @@ int main()
                 wait_for_start(start);
                 for (size_t i = 0; i < iters; ++i)
                 {
-                    void* p = s.alloc(sz);
+                    void* p = s.palloc(sz);
                     if (p == nullptr)
                         continue;
                     s.free(p, sz);
@@ -160,7 +160,7 @@ int main()
                 for (size_t i = 0; !done.load(std::memory_order_acquire) && i < alloc_iters; ++i)
                 {
                     size_t sz = (tid % 2 == 0) ? 32 : 64;
-                    void* p = s.alloc(sz);
+                    void* p = s.palloc(sz);
                     if (p)
                         s.free(p, sz);
                 }
@@ -193,7 +193,7 @@ int main()
         // Verify slab is usable after all resets
         for (size_t sz : {8, 16, 32, 64, 128, 256})
         {
-            void* p = s.alloc(sz);
+            void* p = s.palloc(sz);
             if (p == nullptr)
             {
                 std::cerr << "ERROR: slab unusable after epoch resets for size " << sz << "\n";
@@ -229,7 +229,7 @@ int main()
                 {
                     default_slab& s = *slabs[(tid + i) % num_slabs];
                     size_t sz = (i % 2 == 0) ? 32 : 64;
-                    void* p = s.alloc(sz);
+                    void* p = s.palloc(sz);
                     if (p)
                     {
                         s.free(p, sz);
@@ -283,7 +283,7 @@ int main()
                 {
                     default_slab& s = *slabs[(tid + i) % num_slabs];
                     size_t sz = (i % 2 == 0) ? 32 : 64;
-                    void* p = s.alloc(sz);
+                    void* p = s.palloc(sz);
                     if (p)
                     {
                         s.free(p, sz);

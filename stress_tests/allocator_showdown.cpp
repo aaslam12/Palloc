@@ -89,7 +89,7 @@ int main()
         {
             default_slab ps{};
             uint64_t t0 = rdtsc();
-            for (size_t i = 0; i < ops; ++i) { void* p = ps.alloc(sz); escape(p); ps.free(p, sz); clobber(); }
+            for (size_t i = 0; i < ops; ++i) { void* p = ps.palloc(sz); escape(p); ps.free(p, sz); clobber(); }
             double slab = cycles_per_op(rdtsc() - t0, ops * 2);
 
             default_dynamic_slab ds{};
@@ -161,7 +161,7 @@ int main()
 
         default_slab s{};
         t0 = rdtsc();
-        for (size_t i = 0; i < ops; ++i) { void* p = s.alloc(sz); escape(p); s.free(p, sz); clobber(); }
+        for (size_t i = 0; i < ops; ++i) { void* p = s.palloc(sz); escape(p); s.free(p, sz); clobber(); }
         results.push_back({"Slab (TLC)", cycles_per_op(rdtsc() - t0, ops * 2)});
 
         t0 = rdtsc();
@@ -197,7 +197,7 @@ int main()
         };
 
         default_slab ps{};
-        results.push_back({"Slab (TLC)", run_batch([&] { return ps.alloc(sz); }, [&](void* p) { ps.free(p, sz); })});
+        results.push_back({"Slab (TLC)", run_batch([&] { return ps.palloc(sz); }, [&](void* p) { ps.free(p, sz); })});
 
         default_dynamic_slab ds{};
         results.push_back({"Dynamic Slab", run_batch([&] { return ds.palloc(sz); }, [&](void* p) { ds.free(p, sz); })});
@@ -244,7 +244,7 @@ int main()
         };
 
         default_slab ps{};
-        run_mt("Slab (TLC)",   [&] { return ps.alloc(sz); }, [&](void* p) { ps.free(p, sz); });
+        run_mt("Slab (TLC)",   [&] { return ps.palloc(sz); }, [&](void* p) { ps.free(p, sz); });
         default_dynamic_slab ds{};
         run_mt("Dynamic Slab", [&] { return ds.palloc(sz); }, [&](void* p) { ds.free(p, sz); });
         run_mt("jemalloc",     [] { return mallocx(sz, 0); }, [](void* p) { dallocx(p, 0); });
@@ -290,7 +290,7 @@ int main()
         };
 
         default_slab ps{};
-        run_mixed("Slab (TLC)",   [&](size_t sz) { return ps.alloc(sz); },   [&](void* p, size_t sz) { ps.free(p, sz); });
+        run_mixed("Slab (TLC)",   [&](size_t sz) { return ps.palloc(sz); },   [&](void* p, size_t sz) { ps.free(p, sz); });
         default_dynamic_slab ds{};
         run_mixed("Dynamic Slab", [&](size_t sz) { return ds.palloc(sz); },  [&](void* p, size_t sz) { ds.free(p, sz); });
         run_mixed("jemalloc",     [](size_t sz) { return mallocx(sz, 0); },  [](void* p, size_t) { dallocx(p, 0); });
@@ -337,7 +337,7 @@ int main()
         };
 
         default_slab ps{};
-        run_hold("Slab (TLC)",   [&] { return ps.alloc(sz); }, [&](void* p) { ps.free(p, sz); });
+        run_hold("Slab (TLC)",   [&] { return ps.palloc(sz); }, [&](void* p) { ps.free(p, sz); });
         default_dynamic_slab ds{};
         run_hold("Dynamic Slab", [&] { return ds.palloc(sz); }, [&](void* p) { ds.free(p, sz); });
         run_hold("jemalloc",     [] { return mallocx(sz, 0); }, [](void* p) { dallocx(p, 0); });

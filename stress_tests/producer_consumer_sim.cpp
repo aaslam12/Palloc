@@ -332,7 +332,7 @@ int main()
         default_slab s{};
         results.push_back(run_producer_consumer(
             "Slab (TLC)",
-            [&]() -> void* { return s.alloc(MSG_SIZE); },
+            [&]() -> void* { return s.palloc(MSG_SIZE); },
             [&](Message* m) { s.free(m, MSG_SIZE); }));
     }
 

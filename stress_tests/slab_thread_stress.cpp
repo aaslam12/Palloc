@@ -91,7 +91,7 @@ int main()
                 for (size_t i = 0; i < iterations_per_thread; ++i)
                 {
                     const size_t req = requests[(tid + i) % requests.size()];
-                    void* ptr = s.alloc(req);
+                    void* ptr = s.palloc(req);
                     if (ptr == nullptr)
                     {
                         null_allocations.fetch_add(1, std::memory_order_relaxed);
@@ -158,7 +158,7 @@ int main()
                 wait_for_start(start);
                 for (size_t i = 0; i < iterations_per_thread; ++i)
                 {
-                    void* ptr = s.alloc(req);
+                    void* ptr = s.palloc(req);
                     if (ptr == nullptr)
                     {
                         null_allocations.fetch_add(1, std::memory_order_relaxed);
@@ -228,7 +228,7 @@ int main()
                 wait_for_start(start);
                 for (size_t i = 0; i < attempts_per_thread; ++i)
                 {
-                    void* ptr = s.alloc(request_size);
+                    void* ptr = s.palloc(request_size);
                     if (ptr == nullptr)
                         continue;
                     local.push_back(ptr);
@@ -296,7 +296,7 @@ int main()
             std::cerr << "ERROR: Target size class free-space not restored after concurrent free" << '\n';
             return 1;
         }
-        void* neighbor = s.alloc(16);
+        void* neighbor = s.palloc(16);
         if (neighbor == nullptr)
         {
             std::cerr << "ERROR: Neighbor size classes should still be usable" << '\n';

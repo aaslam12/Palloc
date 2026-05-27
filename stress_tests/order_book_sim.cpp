@@ -618,7 +618,7 @@ int main()
             slab<order_slab_cfg> s{};
             results.push_back(run_st(
                 "Slab (TLC)",
-                [&]() -> void* { return s.alloc(order_size); },
+                [&]() -> void* { return s.palloc(order_size); },
                 [&](Order* o) { s.free(o, order_size); }));
         }
         {
@@ -666,7 +666,7 @@ int main()
             slab<order_slab_cfg> s{};
             results.push_back(run_mt(
                 "Slab (TLC)", num_threads,
-                [&]() -> void* { return s.alloc(order_size); },
+                [&]() -> void* { return s.palloc(order_size); },
                 [&](Order* o) { s.free(o, order_size); }));
         }
         {
