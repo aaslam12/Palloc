@@ -184,7 +184,7 @@ size_t bitmap::alloc_bit(size_t limit) noexcept
                         m_hint.store(w + 1, std::memory_order_relaxed);
                     return slot;
                 }
-                // word reloaded by CAS failure — loop recomputes effective
+                // word reloaded by CAS failure - loop recomputes effective
             }
         }
     }
@@ -243,7 +243,7 @@ size_t bitmap::alloc_bits_batch(size_t count, size_t limit, size_t out[]) noexce
             new_word = word | claimed;
         }
         while (!m_words[w].compare_exchange_weak(word, new_word, std::memory_order_acquire, std::memory_order_relaxed));
-        // word reloaded on CAS failure — effective recomputed at top of do-while
+        // word reloaded on CAS failure - effective recomputed at top of do-while
 
         if (claimed == 0)
             continue;

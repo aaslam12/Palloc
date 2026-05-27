@@ -17,7 +17,7 @@ namespace AL
 
 struct thread_local_cache
 {
-    // max capacity — actual batch sizes are tuned per size class
+    // max capacity - actual batch sizes are tuned per size class
     static constexpr size_t object_count = 128;
 
     std::array<void*, object_count> objects;
@@ -80,9 +80,8 @@ public:
     // NOT thread safe
     void reset();
 
-    // Decommit physical pages for all fully-empty grown chunks across all pools.
-    // NOT thread-safe: call only when no other threads are allocating/freeing.
-    // Shrinks RSS back toward the initial committed footprint.
+    // decommits physical pages for all empty grown chunks across all pools
+    // NOT thread-safe
     void shrink() noexcept;
 
     void free(void* ptr, size_t size);
@@ -222,17 +221,22 @@ private:
     palloc_atomic<size_t> epoch;
     std::array<pool_view, Tconfig::NUM_SIZE_CLASSES> shared_pools;
 
-    std::byte* m_region      = nullptr;
-    size_t     m_region_size = 0;
+    std::byte* m_region = nullptr;
+    size_t m_region_size = 0;
 
-    // per-pool payload base addresses — needed to compute virtual_commit offset during growth
+    // base address of each pool's payload sub-region
     std::array<std::byte*, Tconfig::NUM_SIZE_CLASSES> m_pool_bases{};
+
+    // coarse bitmap per pool: 1 bit per chunk, 1 = committed
+    std::array<palloc_atomic<uint64_t>*, Tconfig::NUM_SIZE_CLASSES> m_coarse_bitmaps{};
+    std::array<size_t, Tconfig::NUM_SIZE_CLASSES> m_coarse_bitmap_bytes{};
+
+    // per-pool fine bitmap pointer arrays
+    std::array<palloc_atomic<uint64_t>**, Tconfig::NUM_SIZE_CLASSES> m_pool_chunk_bitmaps{};
+    std::array<size_t, Tconfig::NUM_SIZE_CLASSES> m_num_chunks{};
 
     inline static palloc_atomic<size_t> next_slab_id{0};
     size_t slab_id;
-
-    void* m_bitmap       = nullptr;
-    size_t m_bitmap_size = 0;
 
     void grow_pool(size_t index) noexcept;
     void decommit_chunk(size_t index, size_t chunk_idx) noexcept;
@@ -258,52 +262,90 @@ slab<Tconfig>::slab() : epoch(0), slab_id(next_slab_id.fetch_add(1, std::memory_
 
     m_region = static_cast<std::byte*>(mem);
 
-    // flat bitmap: one contiguous alloc covering all classes' virtual ceilings
-    size_t bitmap_size = 0;
-    for (size_t i = 0; i < Tconfig::NUM_SIZE_CLASSES; i++)
-        bitmap_size += ((Tconfig::VIRTUAL_BLOCK_CEILINGS[i] + 63) / 64) * sizeof(uint64_t);
-
-    m_bitmap = AL::platform_mem::alloc(bitmap_size);
-    if (!m_bitmap)
-    {
-        AL::platform_mem::free(mem, m_region_size);
-        throw std::bad_alloc();
-    }
-    // zero only the initially-used bitmap words per class — the rest will be zeroed on demand
-    // (platform_mem::alloc returns mapped memory that the OS zeros on first page fault)
-    {
-        std::byte* bmap_cursor = static_cast<std::byte*>(m_bitmap);
-        for (size_t i = 0; i < Tconfig::NUM_SIZE_CLASSES; i++)
-        {
-            size_t initial_words = (Tconfig::SIZE_CLASS_CONFIG[i].num_blocks + 63) / 64;
-            std::memset(bmap_cursor, 0, initial_words * sizeof(uint64_t));
-            size_t ceiling_words = (Tconfig::VIRTUAL_BLOCK_CEILINGS[i] + 63) / 64;
-            bmap_cursor += ceiling_words * sizeof(uint64_t);
-        }
-    }
-    m_bitmap_size = bitmap_size;
-
-    // carve payload and bitmap sub-regions per pool
-    std::byte* bitmap_cursor = static_cast<std::byte*>(m_bitmap);
+    // per-pool: coarse bitmap + chunk_bitmaps array + initial fine bitmap for chunk 0
     std::byte* cursor = m_region;
     for (size_t i = 0; i < Tconfig::NUM_SIZE_CLASSES; ++i)
     {
         auto& sc = Tconfig::SIZE_CLASS_CONFIG[i];
 
+        // align cursor
         uintptr_t addr = reinterpret_cast<uintptr_t>(cursor);
         addr = (addr + sc.byte_size - 1) & ~(sc.byte_size - 1);
         cursor = reinterpret_cast<std::byte*>(addr);
-
         m_pool_bases[i] = cursor;
 
-        size_t bitmap_bytes = ((Tconfig::VIRTUAL_BLOCK_CEILINGS[i] + 63) / 64) * sizeof(uint64_t);
-        shared_pools[i].init_from_region(cursor, bitmap_cursor,
-                                          sc.byte_size,
-                                          sc.num_blocks,
-                                          Tconfig::VIRTUAL_BLOCK_CEILINGS[i],
-                                          sc.num_blocks);
-        bitmap_cursor += bitmap_bytes;
-        cursor += sc.byte_size * sc.num_blocks;
+        size_t ceiling = Tconfig::VIRTUAL_BLOCK_CEILINGS[i];
+        size_t chunk_size = sc.num_blocks;
+        size_t num_chunks = (ceiling + chunk_size - 1) / chunk_size;
+        m_num_chunks[i] = num_chunks;
+
+        // coarse bitmap: 1 bit per chunk
+        size_t coarse_words = (num_chunks + 63) / 64;
+        size_t coarse_bytes = coarse_words * sizeof(uint64_t);
+        auto* coarse = static_cast<palloc_atomic<uint64_t>*>(AL::platform_mem::alloc(coarse_bytes));
+        if (!coarse)
+        {
+            // cleanup already-allocated resources then throw
+            for (size_t j = 0; j < i; ++j)
+            {
+                AL::platform_mem::free(m_coarse_bitmaps[j], m_coarse_bitmap_bytes[j]);
+                // free chunk_bitmaps[0] (initial fine bitmap)
+                AL::platform_mem::free(m_pool_chunk_bitmaps[j][0], pool_view::fine_bitmap_bytes(Tconfig::SIZE_CLASS_CONFIG[j].num_blocks));
+                AL::platform_mem::free(m_pool_chunk_bitmaps[j], m_num_chunks[j] * sizeof(palloc_atomic<uint64_t>*));
+            }
+            AL::platform_mem::free(mem, m_region_size);
+            throw std::bad_alloc();
+        }
+        std::memset(coarse, 0, coarse_bytes);
+        m_coarse_bitmaps[i] = coarse;
+        m_coarse_bitmap_bytes[i] = coarse_bytes;
+
+        // chunk_bitmaps pointer array (all null initially)
+        auto** chunk_bitmaps = static_cast<palloc_atomic<uint64_t>**>(AL::platform_mem::alloc(num_chunks * sizeof(palloc_atomic<uint64_t>*)));
+        if (!chunk_bitmaps)
+        {
+            AL::platform_mem::free(coarse, coarse_bytes);
+            for (size_t j = 0; j < i; ++j)
+            {
+                AL::platform_mem::free(m_coarse_bitmaps[j], m_coarse_bitmap_bytes[j]);
+                AL::platform_mem::free(m_pool_chunk_bitmaps[j][0], pool_view::fine_bitmap_bytes(Tconfig::SIZE_CLASS_CONFIG[j].num_blocks));
+                AL::platform_mem::free(m_pool_chunk_bitmaps[j], m_num_chunks[j] * sizeof(palloc_atomic<uint64_t>*));
+            }
+            AL::platform_mem::free(mem, m_region_size);
+            throw std::bad_alloc();
+        }
+        std::memset(chunk_bitmaps, 0, num_chunks * sizeof(palloc_atomic<uint64_t>*));
+        m_pool_chunk_bitmaps[i] = chunk_bitmaps;
+
+        // fine bitmap for chunk 0 (initial commit)
+        size_t fine_bytes = pool_view::fine_bitmap_bytes(chunk_size);
+        auto* fine = static_cast<palloc_atomic<uint64_t>*>(AL::platform_mem::alloc(fine_bytes));
+        if (!fine)
+        {
+            AL::platform_mem::free(coarse, coarse_bytes);
+            AL::platform_mem::free(chunk_bitmaps, num_chunks * sizeof(palloc_atomic<uint64_t>*));
+            for (size_t j = 0; j < i; ++j)
+            {
+                AL::platform_mem::free(m_coarse_bitmaps[j], m_coarse_bitmap_bytes[j]);
+                AL::platform_mem::free(m_pool_chunk_bitmaps[j][0], pool_view::fine_bitmap_bytes(Tconfig::SIZE_CLASS_CONFIG[j].num_blocks));
+                AL::platform_mem::free(m_pool_chunk_bitmaps[j], m_num_chunks[j] * sizeof(palloc_atomic<uint64_t>*));
+            }
+            AL::platform_mem::free(mem, m_region_size);
+            throw std::bad_alloc();
+        }
+        std::memset(fine, 0, fine_bytes);
+        // mark tail bits
+        size_t tail = chunk_size % 64;
+        size_t words = (chunk_size + 63) / 64;
+        if (tail)
+            fine[words - 1].store(~uint64_t(0) << tail, std::memory_order_relaxed);
+        chunk_bitmaps[0] = fine;
+
+        // mark chunk 0 as committed in coarse bitmap
+        coarse[0].fetch_or(uint64_t(1), std::memory_order_relaxed);
+
+        shared_pools[i].init_from_region(cursor, chunk_bitmaps, sc.byte_size, chunk_size, ceiling, chunk_size);
+        cursor += sc.byte_size * chunk_size;
     }
 }
 
@@ -339,10 +381,21 @@ slab<Tconfig>::~slab()
         m_region = nullptr;
     }
 
-    if (m_bitmap != nullptr)
+    // free all bitmaps
+    for (size_t i = 0; i < Tconfig::NUM_SIZE_CLASSES; ++i)
     {
-        AL::platform_mem::free(m_bitmap, m_bitmap_size);
-        m_bitmap = nullptr;
+        if (m_pool_chunk_bitmaps[i])
+        {
+            size_t fine_bytes = pool_view::fine_bitmap_bytes(Tconfig::SIZE_CLASS_CONFIG[i].num_blocks);
+            for (size_t c = 0; c < m_num_chunks[i]; ++c)
+            {
+                if (m_pool_chunk_bitmaps[i][c])
+                    AL::platform_mem::free(m_pool_chunk_bitmaps[i][c], fine_bytes);
+            }
+            AL::platform_mem::free(m_pool_chunk_bitmaps[i], m_num_chunks[i] * sizeof(palloc_atomic<uint64_t>*));
+        }
+        if (m_coarse_bitmaps[i])
+            AL::platform_mem::free(m_coarse_bitmaps[i], m_coarse_bitmap_bytes[i]);
     }
 }
 
@@ -362,7 +415,7 @@ void* slab<Tconfig>::alloc(size_t size)
     if (ptr != nullptr) [[likely]]
         return ptr;
 
-    // pool exhausted — attempt to grow
+    // pool exhausted - attempt to grow
     grow_pool(index);
     return alloc_internal(size);
 }
@@ -373,30 +426,63 @@ void slab<Tconfig>::grow_pool(size_t index) noexcept
     pool_view& p = shared_pools[index];
 
     if (p.committed_blocks() >= p.virtual_block_ceiling())
-        return; // truly full
+        return;
 
     size_t old = 0;
-    if (p.try_reserve_chunk(old))
+    if (!p.try_reserve_chunk(old))
+        return; // another thread won the CAS - caller retries alloc
+
+    size_t block_size = Tconfig::SIZE_CLASS_CONFIG[index].byte_size;
+    size_t chunk_blocks = p.blocks_per_chunk();
+    size_t chunk_idx = old / chunk_blocks;
+
+    // commit payload pages
+    std::byte* chunk_base = m_pool_bases[index] + old * block_size;
+    AL::platform_mem::virtual_commit(chunk_base, chunk_blocks * block_size);
+
+    // allocate and zero fine bitmap for this chunk
+    size_t fine_bytes = pool_view::fine_bitmap_bytes(chunk_blocks);
+    auto* fine = static_cast<palloc_atomic<uint64_t>*>(AL::platform_mem::alloc(fine_bytes));
+    if (fine)
     {
-        // won the reservation — commit pages BEFORE making them visible
-        size_t block_size   = Tconfig::SIZE_CLASS_CONFIG[index].byte_size;
-        size_t chunk_blocks = p.blocks_per_chunk();
-        std::byte* chunk_base = m_pool_bases[index] + old * block_size;
-        AL::platform_mem::virtual_commit(chunk_base, chunk_blocks * block_size);
-        // now make the new blocks visible to alloc scans
-        p.advance_committed(old + chunk_blocks);
+        std::memset(fine, 0, fine_bytes);
+        size_t tail = chunk_blocks % 64;
+        size_t words = (chunk_blocks + 63) / 64;
+        if (tail)
+            fine[words - 1].store(~uint64_t(0) << tail, std::memory_order_relaxed);
+        m_pool_chunk_bitmaps[index][chunk_idx] = fine;
+
+        // set coarse bit
+        size_t cw = chunk_idx / 64, cb = chunk_idx % 64;
+        m_coarse_bitmaps[index][cw].fetch_or(uint64_t(1) << cb, std::memory_order_relaxed);
     }
-    // whether we won or lost, caller retries alloc
+
+    // make new blocks visible
+    p.advance_committed(old + chunk_blocks);
 }
 
 template<slab_config_type Tconfig>
-void slab<Tconfig>::decommit_chunk(size_t index, size_t chunk_idx) noexcept
+void slab<Tconfig>::decommit_chunk(size_t index, size_t chunk_idx) noexcept // chunk_idx (null = not committed)
 {
-    pool_view& p          = shared_pools[index];
-    size_t block_size     = Tconfig::SIZE_CLASS_CONFIG[index].byte_size;
-    size_t chunk_blocks   = p.blocks_per_chunk();
+    pool_view& p = shared_pools[index];
+    size_t block_size = Tconfig::SIZE_CLASS_CONFIG[index].byte_size;
+    size_t chunk_blocks = p.blocks_per_chunk();
+
+    // decommit payload
     std::byte* chunk_base = m_pool_bases[index] + chunk_idx * chunk_blocks * block_size;
     AL::platform_mem::virtual_free(chunk_base, chunk_blocks * block_size);
+
+    // free fine bitmap and null the pointer
+    size_t fine_bytes = pool_view::fine_bitmap_bytes(chunk_blocks);
+    if (m_pool_chunk_bitmaps[index][chunk_idx])
+    {
+        AL::platform_mem::free(m_pool_chunk_bitmaps[index][chunk_idx], fine_bytes);
+        m_pool_chunk_bitmaps[index][chunk_idx] = nullptr;
+    }
+
+    // clear coarse bit
+    size_t cw = chunk_idx / 64, cb = chunk_idx % 64;
+    m_coarse_bitmaps[index][cw].fetch_and(~(uint64_t(1) << cb), std::memory_order_relaxed);
 }
 
 template<slab_config_type Tconfig>
@@ -459,27 +545,27 @@ void slab<Tconfig>::shrink() noexcept
     for (size_t i = 0; i < Tconfig::NUM_SIZE_CLASSES; ++i)
     {
         pool_view& p = shared_pools[i];
-        size_t committed  = p.committed_blocks();
+        size_t committed = p.committed_blocks();
         size_t chunk_size = p.blocks_per_chunk();
-        size_t block_size = Tconfig::SIZE_CLASS_CONFIG[i].byte_size;
 
-        if (chunk_size == 0 || committed <= chunk_size)
-            continue; // only the initial chunk — nothing grown to decommit
+        if (committed <= chunk_size)
+            continue; // only the initial chunk - nothing grown to decommit
 
         size_t num_chunks = committed / chunk_size;
-        size_t words_per_chunk = (chunk_size + 63) / 64;
 
-        // scan grown chunks (skip chunk 0 = initial commit)
-        for (size_t c = num_chunks; c-- > 1; )
+        // scan grown chunks top-down (skip chunk 0 = initial commit)
+        // find the highest contiguous run of empty chunks and trim committed_blocks
+        size_t new_committed = committed;
+        for (size_t c = num_chunks; c-- > 1;)
         {
-            size_t word_start = c * words_per_chunk;
-            if (!p.is_chunk_empty(word_start, words_per_chunk))
-                continue;
-
-            // chunk is empty — decommit payload and roll back committed_blocks
+            if (!p.is_chunk_empty(c))
+                break; // stop at first non-empty chunk from the top
             decommit_chunk(i, c);
-            p.decommit_blocks(c * chunk_size, chunk_size);
+            new_committed = c * chunk_size;
         }
+
+        if (new_committed < committed)
+            p.decommit_blocks(new_committed);
     }
 }
 

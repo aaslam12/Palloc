@@ -4,7 +4,6 @@
 #include <bit>
 #include <concepts>
 #include <cstddef>
-#include <cstdint>
 #include <limits>
 
 #include "platform.h"
@@ -113,6 +112,12 @@ struct slab_config
         for (size_t i = 0; i < Tnum; i++)
         {
             size_t ceiling = (SIZE_CLASS_CONFIG[i].chunk_size * VIRTUAL_MEM_PREALLOC_SIZE) / TOTAL_INITIAL_SIZE / SIZE_CLASS_CONFIG[i].byte_size;
+            // cap: coarse bitmap and chunk_bitmaps array must be manageable
+            // max 65536 chunks per pool (coarse bitmap = 1KB, chunk_bitmaps = 512KB)
+            constexpr size_t MAX_CHUNKS = 65536;
+            size_t max_ceiling = SIZE_CLASS_CONFIG[i].num_blocks * MAX_CHUNKS;
+            if (ceiling > max_ceiling)
+                ceiling = max_ceiling;
             result[i] = ceiling > SIZE_CLASS_CONFIG[i].num_blocks ? ceiling : SIZE_CLASS_CONFIG[i].num_blocks;
         }
 
@@ -162,7 +167,7 @@ struct slab_config
             std::size_t mask = sc.byte_size - 1;
             total = (total + mask) & ~mask;
 
-            // payload only — bitmap is allocated separately
+            // payload only - bitmap is allocated separately
             total += sc.byte_size * sc.num_blocks;
         }
         return total;
