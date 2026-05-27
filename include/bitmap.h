@@ -7,9 +7,9 @@
 namespace AL
 {
 
-// Flat atomic bitmap over an externally provided memory region.
-// Non-owning: does not allocate or free memory.
-// One bit per slot: 0 = free, 1 = allocated.
+// flat atomic bitmap over an external memory region
+// non-owning: does not allocate or free memory
+// 0 = free, 1 = allocated
 class bitmap
 {
 public:
@@ -21,36 +21,35 @@ public:
     bitmap(bitmap&& other) noexcept;
     bitmap& operator=(bitmap&& other) noexcept;
 
-    // base: pointer to memory large enough for required_size(num_slots) bytes, pre-zeroed.
-    // Trailing bits beyond num_slots in the last word are pre-set to 1 so scans terminate correctly.
+    // base must be pre-zeroed and large enough for required_size(num_slots) bytes
+    // trailing bits beyond num_slots are pre-set to 1 so scans terminate correctly
     void init(void* base, size_t num_slots) noexcept;
 
-    // Atomically claim one free slot. Returns slot index, or (size_t)-1 if full.
+    // atomically claim one free slot - returns slot index or (size_t)-1 if full
     [[nodiscard]] size_t alloc_bit() noexcept;
 
-    // Atomically claim up to count free slots. Writes slot indices into out[]. Returns count claimed.
+    // atomically claim up to count free slots - writes indices into out[], returns count claimed
     size_t alloc_bits_batch(size_t count, size_t out[]) noexcept;
 
-    // Atomically claim one free slot. Scans upto the limit provided. Returns slot index, or (size_t)-1 if full.
+    // like alloc_bit but scans only up to limit slots
     [[nodiscard]] size_t alloc_bit(size_t limit) noexcept;
 
-    // Atomically claim up to count free slots. Scans upto the limit provided. Writes slot indices into out[]. Returns count claimed.
+    // like alloc_bits_batch but scans only up to limit slots
     size_t alloc_bits_batch(size_t count, size_t limit, size_t out[]) noexcept;
 
-    // Atomically free a slot.
+    // atomically free a slot
     void free_bit(size_t slot) noexcept;
 
-    // Batch free using word-level accumulation: one fetch_and per touched word.
+    // batch free - accumulates masks per word, one fetch_and per touched word
     void free_bits_batch(const size_t slots[], size_t count) noexcept;
 
-    // Reset all slots to free. Not thread-safe.
+    // reset all slots to free - not thread-safe
     void reset() noexcept;
 
-    // Reset only the first active_words words (covering active_slots slots). Not thread-safe.
-    // Used by pool_view when the bitmap covers the full virtual ceiling but only part is committed.
+    // reset only the first active_words words - not thread-safe
     void reset_to(size_t active_words, size_t active_slots) noexcept;
 
-    // Returns true if every bit in words [word_start, word_start + word_count) is 0.
+    // returns true if every bit in [word_start, word_start + word_count) is 0
     [[nodiscard]] bool is_range_empty(size_t word_start, size_t word_count) const noexcept;
 
     [[nodiscard]] bool is_slot_set(size_t slot) const noexcept;

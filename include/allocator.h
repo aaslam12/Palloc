@@ -42,7 +42,7 @@ struct arena_allocator
     {
         (void)p;
         (void)n;
-        // no op. memory is freed only when arena is destroyed
+        // no-op: memory is freed when the arena is destroyed
     }
 
     template<typename U>
@@ -118,7 +118,7 @@ struct pool_allocator
     using size_type = std::size_t;
     using difference_type = std::ptrdiff_t;
 
-    // pool must allocate fixed-size blocks equal to sizeof(T)
+    // pool block size must equal sizeof(T)
     pool* m_pool;
 
     pool_allocator(pool* p) noexcept : m_pool(p)

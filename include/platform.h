@@ -20,7 +20,7 @@ inline constexpr bool palloc_is_windows =
     false;
 #endif
 
-// Portable compiler hints for cold/noinline functions.
+// portable compiler hints for cold/noinline functions
 #if defined(__GNUC__) || defined(__clang__)
 #define PALLOC_COLD __attribute__((noinline, cold))
 #elif defined(_MSC_VER)
@@ -37,10 +37,7 @@ constexpr size_t ONE_MB = 1024 * ONE_KB;
 constexpr size_t ONE_GB = 1024 * ONE_MB;
 constexpr size_t ONE_TB = 1024 * ONE_GB;
 
-//
-// replaces platform specific system calls with a wrapper that changes which function is called based on what system you compiled for.
-// has zero runtime overhead
-//
+// platform-specific memory primitives - zero runtime overhead
 struct platform_mem
 {
     [[nodiscard]] static void* alloc(std::size_t size) noexcept
@@ -53,19 +50,15 @@ struct platform_mem
 #endif
     }
 
-    // used for lazy commit strategies
-    // reserves virtual memory without using physical memory
-    // size is in bytes and usually a multiple of the system page size
+    // reserves virtual address space without backing it with physical memory
     [[nodiscard]] static void* virtual_alloc(std::size_t size) noexcept
     {
 #ifdef _WIN32
-        // returns null or fail
         return VirtualAlloc(nullptr, size, MEM_RESERVE, PAGE_NOACCESS);
 #else
-        // size is in bytes and usually a multiple of the system page size
         void* ptr = mmap(nullptr,
                          size,
-                         PROT_NONE, // becomes rw when virtual_commit() calls mprotect()
+                         PROT_NONE,
                          MAP_PRIVATE | MAP_ANONYMOUS | MAP_NORESERVE,
                          -1,
                          0);
@@ -73,20 +66,17 @@ struct platform_mem
 #endif
     }
 
-    // used for lazy commit strategies
-    // activates reserved virtual pages so they can be read and written
-    // size is in bytes and usually a multiple of the system page size
+    // commits reserved pages - makes them readable and writable
     static bool virtual_commit(void* ptr, std::size_t size) noexcept
     {
 #ifdef _WIN32
-        // returns null or fail
         return VirtualAlloc(ptr, size, MEM_COMMIT, PAGE_READWRITE);
 #else
         return mprotect(ptr, size, PROT_READ | PROT_WRITE) == 0;
 #endif
     }
 
-    // decommits physical memory and strips perms
+    // decommits physical pages and revokes access permissions
     static bool virtual_free(void* ptr, std::size_t size) noexcept
     {
 #ifdef _WIN32

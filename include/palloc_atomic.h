@@ -4,9 +4,8 @@
 
 #if defined(PALLOC_SINGLE_THREADED)
 
-// Lightweight atomic wrapper for a subset of std::atomic<T> that compiles to plain loads/stores
-// when the library is built in single-threaded mode.
-// Eliminates LOCK instructions (LOCK XADD, LOCK CMPXCHG, etc.)
+// lightweight atomic wrapper - compiles to plain loads/stores under PALLOC_SINGLE_THREADED
+// eliminates all LOCK-prefixed instructions
 
 namespace AL
 {
