@@ -12,10 +12,11 @@
 //   - RSS vs live data (fragmentation ratio)
 //
 // Only allocators that handle variable-size individual free are tested:
-//   Dynamic Slab, jemalloc, malloc
+//   Slab, Dynamic Slab, jemalloc, malloc
 // ═══════════════════════════════════════════════════════════════════════════════
 
 #include "dynamic_slab.h"
+#include "slab.h"
 
 #include <jemalloc/jemalloc.h>
 
@@ -253,6 +254,15 @@ int main()
     printf("╚══════════════════════════════════════════════════════════════╝\n");
 
     std::vector<BenchResult> results;
+
+    // Slab (growable)
+    {
+        default_slab s{};
+        results.push_back(run_fragmentation(
+            "Slab (TLC)",
+            [&](size_t sz) -> void* { return s.alloc(sz); },
+            [&](void* p, size_t sz) { s.free(p, sz); }));
+    }
 
     // Dynamic Slab
     {

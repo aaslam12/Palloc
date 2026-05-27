@@ -14,7 +14,7 @@ namespace AL
 {
 
 template<slab_config_type Tconfig>
-class dynamic_slab
+class [[deprecated("dynamic_slab is superseded by slab, which now grows on demand. use default_slab instead.")]] dynamic_slab
 {
 public:
     explicit dynamic_slab();

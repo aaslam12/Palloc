@@ -12,7 +12,6 @@
 // ═══════════════════════════════════════════════════════════════════════════════
 
 #include <algorithm>
-#include <array>
 #include <atomic>
 #include <cstddef>
 #include <cstdint>
@@ -34,12 +33,18 @@ inline uint64_t rdtsc()
 
 // ─── Compiler Hints ───────────────────────────────────────────────────────────
 
-inline void escape(void* p) { asm volatile("" : : "g"(p) : "memory"); }
-inline void clobber() { asm volatile("" : : : "memory"); }
+inline void escape(void* p)
+{
+    asm volatile("" : : "g"(p) : "memory");
+}
+inline void clobber()
+{
+    asm volatile("" : : : "memory");
+}
 
 // ─── Fixed-Size Latency Buffer ────────────────────────────────────────────────
 
-template <size_t Capacity>
+template<size_t Capacity>
 struct LatencyBuffer
 {
     alignas(64) uint64_t samples[Capacity];
@@ -141,10 +146,13 @@ public:
             thread_.join();
     }
 
-    bool is_done() const { return done_.load(std::memory_order_relaxed); }
+    bool is_done() const
+    {
+        return done_.load(std::memory_order_relaxed);
+    }
 
     // For periodic checking (returns true every N calls when deadline is reached)
-    template <size_t CheckInterval>
+    template<size_t CheckInterval>
     bool check_periodic(size_t iteration) const
     {
         if ((iteration & (CheckInterval - 1)) == 0)
@@ -155,7 +163,7 @@ public:
 
 // ─── Per-Thread Counter ───────────────────────────────────────────────────────
 
-template <typename T = size_t>
+template<typename T = size_t>
 class ThreadCounter
 {
     static inline thread_local T local_{0};
@@ -167,7 +175,10 @@ public:
         local_ += delta;
     }
 
-    T get_local() const { return local_; }
+    T get_local() const
+    {
+        return local_;
+    }
 
     void publish()
     {
@@ -175,7 +186,10 @@ public:
         local_ = 0;
     }
 
-    T get_global() const { return global_.load(std::memory_order_relaxed); }
+    T get_global() const
+    {
+        return global_.load(std::memory_order_relaxed);
+    }
 };
 
 // ─── Thread Coordination ──────────────────────────────────────────────────────

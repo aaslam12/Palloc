@@ -159,6 +159,7 @@ if(PALLOC_BUILD_STRESS_TESTS)
     set(JEMALLOC_STRESS_TESTS
       jemalloc_vs_palloc
       dynamic_slab_vs_jemalloc
+      slab_vs_jemalloc
       allocator_showdown
       order_book_sim
       market_data_replay
