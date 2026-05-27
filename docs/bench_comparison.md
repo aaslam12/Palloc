@@ -56,8 +56,10 @@ Each test run 3x; values are averages. Positive % = current is slower, negative 
 | MT single-size 32B | malloc | 1.3 | 1.2 | -7.9% |
 | MT mixed sizes | Slab (TLC) | 3.2 | 2.3 | -27.4% |
 | MT mixed sizes | malloc | 1.6 | 1.5 | -6.3% |
-| MT batch hold 500 | Slab (TLC) | 2.1 | 13.2 | +530.2% |
+| MT batch hold 500 | Slab (TLC) | ~2.1 (invalid*) | 9.6 | — |
 | MT batch hold 500 | malloc | 3.7 | 3.6 | -1.8% |
+
+> \* Baseline MT batch hold 500 Slab number is invalid: the fixed-capacity baseline pool (256 blocks × 12 threads = 3072 slots needed for 500-hold × 12 threads = 6000) exhausted silently, most allocs returned nullptr. Baseline was measuring null-check cost, not real alloc/free. Current measures actual work.
 
 ## arena_vs_malloc_stress
 
