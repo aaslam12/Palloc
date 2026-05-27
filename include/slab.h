@@ -71,7 +71,7 @@ public:
 
     // returns: nullptr if failed, else the memory address of the block of memory
     // returns memory is properly aligned
-    [[nodiscard]] void* alloc(size_t size);
+    [[nodiscard]] void* palloc(size_t size);
 
     // returns: nullptr if failed, else the memory address of the block of memory
     // returns memory is properly aligned
@@ -400,7 +400,7 @@ slab<Tconfig>::~slab()
 }
 
 template<slab_config_type Tconfig>
-void* slab<Tconfig>::alloc(size_t size)
+void* slab<Tconfig>::palloc(size_t size)
 {
     if (size == 0 || size == (size_t)-1) [[unlikely]]
         return nullptr;
@@ -522,7 +522,7 @@ void* slab<Tconfig>::alloc_internal(size_t size)
 template<slab_config_type Tconfig>
 void* slab<Tconfig>::calloc(size_t size)
 {
-    void* ptr = alloc(size);
+    void* ptr = palloc(size);
     if (ptr != nullptr)
     {
         size_t actual_size = Tconfig::SIZE_CLASS_CONFIG[size_to_index(size)].byte_size;

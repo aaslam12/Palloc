@@ -69,24 +69,24 @@ TEST_CASE("Slab: Custom size class configs", "[slab][config]")
     {
         single_slab s;
         REQUIRE(s.get_pool_count() == 1);
-        void* p = s.alloc(8);
+        void* p = s.palloc(8);
         REQUIRE(p != nullptr);
-        REQUIRE(s.alloc(8) == nullptr); // exhausted
+        REQUIRE(s.palloc(8) == nullptr); // exhausted
     }
 
     SECTION("custom config rejects sizes outside its range")
     {
         tiny_slab s;
-        REQUIRE(s.alloc(64) == nullptr); // 64 > max class (32)
-        REQUIRE(s.alloc(0) == nullptr);
+        REQUIRE(s.palloc(64) == nullptr); // 64 > max class (32)
+        REQUIRE(s.palloc(0) == nullptr);
     }
 
     SECTION("custom config allocates all its size classes")
     {
         tiny_slab s;
-        void* p8 = s.alloc(8);
-        void* p16 = s.alloc(16);
-        void* p32 = s.alloc(32);
+        void* p8 = s.palloc(8);
+        void* p16 = s.palloc(16);
+        void* p32 = s.palloc(32);
         REQUIRE(p8 != nullptr);
         REQUIRE(p16 != nullptr);
         REQUIRE(p32 != nullptr);
@@ -103,24 +103,24 @@ TEST_CASE("Slab: Basic allocations", "[slab][alloc]")
 
     SECTION("Small allocation")
     {
-        REQUIRE(s.alloc(8) != nullptr);
+        REQUIRE(s.palloc(8) != nullptr);
     }
 
     SECTION("Medium allocation")
     {
-        REQUIRE(s.alloc(128) != nullptr);
+        REQUIRE(s.palloc(128) != nullptr);
     }
 
     SECTION("Large allocation within range")
     {
-        REQUIRE(s.alloc(4096) != nullptr);
+        REQUIRE(s.palloc(4096) != nullptr);
     }
 
     SECTION("Multiple distinct allocations same size")
     {
-        void* p1 = s.alloc(64);
-        void* p2 = s.alloc(64);
-        void* p3 = s.alloc(64);
+        void* p1 = s.palloc(64);
+        void* p2 = s.palloc(64);
+        void* p3 = s.palloc(64);
         REQUIRE(p1 != nullptr);
         REQUIRE(p2 != nullptr);
         REQUIRE(p3 != nullptr);
@@ -131,9 +131,9 @@ TEST_CASE("Slab: Basic allocations", "[slab][alloc]")
 
     SECTION("Multiple distinct allocations different sizes")
     {
-        void* p1 = s.alloc(32);
-        void* p2 = s.alloc(64);
-        void* p3 = s.alloc(128);
+        void* p1 = s.palloc(32);
+        void* p2 = s.palloc(64);
+        void* p3 = s.palloc(128);
         REQUIRE(p1 != p2);
         REQUIRE(p2 != p3);
         REQUIRE(p1 != p3);
@@ -153,7 +153,7 @@ TEST_CASE("Slab: Size class routing", "[slab][alloc]")
         size_t sizes[] = {8, 16, 32, 64, 128, 256, 512, 1024, 2048, 4096};
         for (size_t size : sizes)
         {
-            void* ptr = s.alloc(size);
+            void* ptr = s.palloc(size);
             REQUIRE(ptr != nullptr);
             s.free(ptr, size);
         }
@@ -161,32 +161,32 @@ TEST_CASE("Slab: Size class routing", "[slab][alloc]")
 
     SECTION("Non-exact sizes use next larger class")
     {
-        REQUIRE(s.alloc(1) != nullptr);  // → 8
-        REQUIRE(s.alloc(9) != nullptr);  // → 16
-        REQUIRE(s.alloc(17) != nullptr); // → 32
-        REQUIRE(s.alloc(33) != nullptr); // → 64
+        REQUIRE(s.palloc(1) != nullptr);  // → 8
+        REQUIRE(s.palloc(9) != nullptr);  // → 16
+        REQUIRE(s.palloc(17) != nullptr); // → 32
+        REQUIRE(s.palloc(33) != nullptr); // → 64
     }
 
     SECTION("Size just below boundary")
     {
-        REQUIRE(s.alloc(7) != nullptr);  // → 8
-        REQUIRE(s.alloc(15) != nullptr); // → 16
-        REQUIRE(s.alloc(31) != nullptr); // → 32
-        REQUIRE(s.alloc(63) != nullptr); // → 64
+        REQUIRE(s.palloc(7) != nullptr);  // → 8
+        REQUIRE(s.palloc(15) != nullptr); // → 16
+        REQUIRE(s.palloc(31) != nullptr); // → 32
+        REQUIRE(s.palloc(63) != nullptr); // → 64
     }
 
     SECTION("Size just above boundary routes up")
     {
-        REQUIRE(s.alloc(9) != nullptr);  // → 16
-        REQUIRE(s.alloc(17) != nullptr); // → 32
-        REQUIRE(s.alloc(33) != nullptr); // → 64
-        REQUIRE(s.alloc(65) != nullptr); // → 128
+        REQUIRE(s.palloc(9) != nullptr);  // → 16
+        REQUIRE(s.palloc(17) != nullptr); // → 32
+        REQUIRE(s.palloc(33) != nullptr); // → 64
+        REQUIRE(s.palloc(65) != nullptr); // → 128
     }
 
     SECTION("Size above max class returns nullptr")
     {
-        REQUIRE(s.alloc(4097) == nullptr);
-        REQUIRE(s.alloc(static_cast<size_t>(-1)) == nullptr);
+        REQUIRE(s.palloc(4097) == nullptr);
+        REQUIRE(s.palloc(static_cast<size_t>(-1)) == nullptr);
     }
 }
 
@@ -197,7 +197,7 @@ TEST_CASE("Slab: Size class routing", "[slab][alloc]")
 TEST_CASE("Slab: Zero-size allocation", "[slab][alloc][edge]")
 {
     AL::default_slab s;
-    REQUIRE(s.alloc(0) == nullptr);
+    REQUIRE(s.palloc(0) == nullptr);
 }
 
 TEST_CASE("Slab: Pool exhaustion", "[slab][alloc][edge]")
@@ -207,28 +207,28 @@ TEST_CASE("Slab: Pool exhaustion", "[slab][alloc][edge]")
     SECTION("Exhaust single size class")
     {
         std::vector<void*> ptrs;
-        while (void* ptr = s.alloc(8))
+        while (void* ptr = s.palloc(8))
             ptrs.push_back(ptr);
 
         REQUIRE(!ptrs.empty());
-        REQUIRE(s.alloc(8) == nullptr);
+        REQUIRE(s.palloc(8) == nullptr);
     }
 
     SECTION("Exhausting one pool doesn't affect others")
     {
-        while (s.alloc(8) != nullptr)
+        while (s.palloc(8) != nullptr)
         {}
-        REQUIRE(s.alloc(16) != nullptr);
-        REQUIRE(s.alloc(32) != nullptr);
+        REQUIRE(s.palloc(16) != nullptr);
+        REQUIRE(s.palloc(32) != nullptr);
     }
 
     SECTION("After reset exhausted pool is usable again")
     {
-        while (s.alloc(8) != nullptr)
+        while (s.palloc(8) != nullptr)
         {}
-        REQUIRE(s.alloc(8) == nullptr);
+        REQUIRE(s.palloc(8) == nullptr);
         s.reset();
-        REQUIRE(s.alloc(8) != nullptr);
+        REQUIRE(s.palloc(8) != nullptr);
     }
 }
 
@@ -258,7 +258,7 @@ TEST_CASE("Slab: Calloc zeros memory", "[slab][calloc]")
 
     SECTION("Calloc after dirty memory")
     {
-        char* ptr1 = static_cast<char*>(s.alloc(128));
+        char* ptr1 = static_cast<char*>(s.palloc(128));
         REQUIRE(ptr1 != nullptr);
         std::memset(ptr1, 0xFF, 128);
         s.free(ptr1, 128);
@@ -285,7 +285,7 @@ TEST_CASE("Slab: Basic free", "[slab][free]")
 
     SECTION("Free single allocation restores capacity after reset")
     {
-        void* ptr = s.alloc(512);
+        void* ptr = s.palloc(512);
         REQUIRE(ptr != nullptr);
         s.free(ptr, 512);
         s.reset();
@@ -301,7 +301,7 @@ TEST_CASE("Slab: Basic free", "[slab][free]")
 
     SECTION("Free with zero size is a no-op")
     {
-        void* ptr = s.alloc(64);
+        void* ptr = s.palloc(64);
         size_t before = s.get_total_free();
         s.free(ptr, 0);
         REQUIRE(s.get_total_free() == before);
@@ -310,7 +310,7 @@ TEST_CASE("Slab: Basic free", "[slab][free]")
 
     SECTION("Free with oversized size is a no-op")
     {
-        void* ptr = s.alloc(64);
+        void* ptr = s.palloc(64);
         size_t before = s.get_total_free();
         s.free(ptr, 999999);
         REQUIRE(s.get_total_free() == before);
@@ -319,23 +319,23 @@ TEST_CASE("Slab: Basic free", "[slab][free]")
 
     SECTION("Freed block can be reallocated")
     {
-        void* p1 = s.alloc(64);
+        void* p1 = s.palloc(64);
         REQUIRE(p1 != nullptr);
         s.free(p1, 64);
-        REQUIRE(s.alloc(64) != nullptr);
+        REQUIRE(s.palloc(64) != nullptr);
     }
 
     SECTION("Free from multiple pools")
     {
-        void* p32 = s.alloc(32);
-        void* p64 = s.alloc(64);
-        void* p128 = s.alloc(128);
+        void* p32 = s.palloc(32);
+        void* p64 = s.palloc(64);
+        void* p128 = s.palloc(128);
         s.free(p32, 32);
         s.free(p64, 64);
         s.free(p128, 128);
-        REQUIRE(s.alloc(32) != nullptr);
-        REQUIRE(s.alloc(64) != nullptr);
-        REQUIRE(s.alloc(128) != nullptr);
+        REQUIRE(s.palloc(32) != nullptr);
+        REQUIRE(s.palloc(64) != nullptr);
+        REQUIRE(s.palloc(128) != nullptr);
     }
 }
 
@@ -359,9 +359,9 @@ TEST_CASE("Slab: Reset functionality", "[slab][reset]")
     SECTION("Reset restores free space after allocations")
     {
         size_t initial = s.get_total_free();
-        s.alloc(32);
-        s.alloc(64);
-        s.alloc(128);
+        s.palloc(32);
+        s.palloc(64);
+        s.palloc(128);
         REQUIRE(s.get_total_free() < initial);
         s.reset();
         REQUIRE(s.get_total_free() == initial);
@@ -369,9 +369,9 @@ TEST_CASE("Slab: Reset functionality", "[slab][reset]")
 
     SECTION("Can allocate after reset")
     {
-        s.alloc(64);
+        s.palloc(64);
         s.reset();
-        REQUIRE(s.alloc(64) != nullptr);
+        REQUIRE(s.palloc(64) != nullptr);
     }
 
     SECTION("Multiple reset cycles keep free space stable")
@@ -380,7 +380,7 @@ TEST_CASE("Slab: Reset functionality", "[slab][reset]")
         for (int cycle = 0; cycle < 10; ++cycle)
         {
             for (int i = 0; i < 10; ++i)
-                s.alloc(64);
+                s.palloc(64);
             s.reset();
             REQUIRE(s.get_total_free() == initial);
         }
@@ -403,7 +403,7 @@ TEST_CASE("Slab: Memory integrity", "[slab][integrity]")
             double y;
             char z[32];
         };
-        TestData* data = static_cast<TestData*>(s.alloc(sizeof(TestData)));
+        TestData* data = static_cast<TestData*>(s.palloc(sizeof(TestData)));
         REQUIRE(data != nullptr);
         data->x = 42;
         data->y = 3.14159;
@@ -415,8 +415,8 @@ TEST_CASE("Slab: Memory integrity", "[slab][integrity]")
 
     SECTION("Multiple allocations don't interfere")
     {
-        int* arr1 = static_cast<int*>(s.alloc(sizeof(int) * 10));
-        int* arr2 = static_cast<int*>(s.alloc(sizeof(int) * 10));
+        int* arr1 = static_cast<int*>(s.palloc(sizeof(int) * 10));
+        int* arr2 = static_cast<int*>(s.palloc(sizeof(int) * 10));
         for (int i = 0; i < 10; ++i)
         {
             arr1[i] = i;
@@ -431,7 +431,7 @@ TEST_CASE("Slab: Memory integrity", "[slab][integrity]")
 
     SECTION("Large buffer integrity")
     {
-        char* buf = static_cast<char*>(s.alloc(4096));
+        char* buf = static_cast<char*>(s.palloc(4096));
         REQUIRE(buf != nullptr);
         for (size_t i = 0; i < 4096; ++i)
             buf[i] = static_cast<char>(i % 256);
@@ -451,13 +451,13 @@ TEST_CASE("Slab: Free space accounting", "[slab][stats]")
     SECTION("Alloc decreases free space")
     {
         size_t before = s.get_total_free();
-        s.alloc(64);
+        s.palloc(64);
         REQUIRE(s.get_total_free() < before);
     }
 
     SECTION("Free + reset restores full capacity")
     {
-        void* ptr = s.alloc(512);
+        void* ptr = s.palloc(512);
         s.free(ptr, 512);
         s.reset();
         REQUIRE(s.get_total_free() == s.get_total_capacity());
@@ -466,14 +466,14 @@ TEST_CASE("Slab: Free space accounting", "[slab][stats]")
     SECTION("Pool-specific free space decreases on alloc")
     {
         size_t before = s.get_pool_free_space(6); // 512B pool
-        s.alloc(512);
+        s.palloc(512);
         REQUIRE(s.get_pool_free_space(6) < before);
     }
 
     SECTION("Free space is zero after exhausting a pool")
     {
         tiny_slab s_tiny;
-        while (s_tiny.alloc(8) != nullptr)
+        while (s_tiny.palloc(8) != nullptr)
         {}
         REQUIRE(s_tiny.get_pool_free_space(0) == 0);
     }
@@ -501,7 +501,7 @@ TEST_CASE("Slab: TLC cached class alloc returns valid memory", "[slab][tlc]")
         size_t cached_sizes[] = {8, 16, 32, 64, 128, 256, 512, 1024, 2048, 4096};
         for (size_t size : cached_sizes)
         {
-            char* ptr = static_cast<char*>(s.alloc(size));
+            char* ptr = static_cast<char*>(s.palloc(size));
             REQUIRE(ptr != nullptr);
             std::memset(ptr, 0xAB, size);
             REQUIRE(static_cast<unsigned char>(ptr[0]) == 0xAB);
@@ -512,11 +512,11 @@ TEST_CASE("Slab: TLC cached class alloc returns valid memory", "[slab][tlc]")
 
     SECTION("Sub-boundary sizes routed to cached class")
     {
-        void* p1 = s.alloc(1);
-        void* p5 = s.alloc(5);
-        void* p9 = s.alloc(9);
-        void* p17 = s.alloc(17);
-        void* p33 = s.alloc(33);
+        void* p1 = s.palloc(1);
+        void* p5 = s.palloc(5);
+        void* p9 = s.palloc(9);
+        void* p17 = s.palloc(17);
+        void* p33 = s.palloc(33);
         REQUIRE(p1 != nullptr);
         REQUIRE(p5 != nullptr);
         REQUIRE(p9 != nullptr);
@@ -535,7 +535,7 @@ TEST_CASE("Slab: TLC multiple allocs return valid memory", "[slab][tlc]")
     AL::default_slab s;
     for (int i = 0; i < 200; ++i)
     {
-        char* ptr = static_cast<char*>(s.alloc(32));
+        char* ptr = static_cast<char*>(s.palloc(32));
         REQUIRE(ptr != nullptr);
         std::memset(ptr, i & 0xFF, 32);
         REQUIRE(static_cast<unsigned char>(ptr[0]) == (i & 0xFF));
@@ -551,7 +551,7 @@ TEST_CASE("Slab: TLC alloc writes don't corrupt across allocations", "[slab][tlc
     ptrs.reserve(count);
     for (size_t i = 0; i < count; ++i)
     {
-        char* ptr = static_cast<char*>(s.alloc(64));
+        char* ptr = static_cast<char*>(s.palloc(64));
         REQUIRE(ptr != nullptr);
         std::memset(ptr, static_cast<int>(i & 0xFF), 64);
         ptrs.push_back(ptr);
@@ -572,7 +572,7 @@ TEST_CASE("Slab: TLC batch refill returns unique pointers", "[slab][tlc]")
     std::set<void*> ptrs;
     for (size_t i = 0; i < count; ++i)
     {
-        void* ptr = s.alloc(8);
+        void* ptr = s.palloc(8);
         REQUIRE(ptr != nullptr);
         ptrs.insert(ptr);
     }
@@ -584,10 +584,10 @@ TEST_CASE("Slab: TLC batch refill returns unique pointers", "[slab][tlc]")
 TEST_CASE("Slab: TLC epoch invalidation after reset", "[slab][tlc][reset]")
 {
     AL::default_slab s;
-    void* ptr1 = s.alloc(16);
+    void* ptr1 = s.palloc(16);
     REQUIRE(ptr1 != nullptr);
     s.reset();
-    void* ptr2 = s.alloc(16);
+    void* ptr2 = s.palloc(16);
     REQUIRE(ptr2 != nullptr);
     std::memset(ptr2, 0xCD, 16);
     REQUIRE(static_cast<unsigned char>(static_cast<char*>(ptr2)[0]) == 0xCD);
@@ -599,10 +599,10 @@ TEST_CASE("Slab: TLC multiple sequential resets", "[slab][tlc][reset]")
     size_t initial = s.get_total_free();
     for (int cycle = 0; cycle < 10; ++cycle)
     {
-        void* p8 = s.alloc(8);
-        void* p16 = s.alloc(16);
-        void* p32 = s.alloc(32);
-        void* p64 = s.alloc(64);
+        void* p8 = s.palloc(8);
+        void* p16 = s.palloc(16);
+        void* p32 = s.palloc(32);
+        void* p64 = s.palloc(64);
         REQUIRE(p8 != nullptr);
         REQUIRE(p16 != nullptr);
         REQUIRE(p32 != nullptr);
@@ -616,10 +616,10 @@ TEST_CASE("Slab: TLC exhaust cached pool completely", "[slab][tlc][edge]")
 {
     tiny_slab s;
     std::vector<void*> ptrs;
-    while (void* ptr = s.alloc(8))
+    while (void* ptr = s.palloc(8))
         ptrs.push_back(ptr);
     REQUIRE(!ptrs.empty());
-    REQUIRE(s.alloc(8) == nullptr);
+    REQUIRE(s.palloc(8) == nullptr);
     for (void* ptr : ptrs)
         s.free(ptr, 8);
 }
@@ -629,7 +629,7 @@ TEST_CASE("Slab: TLC cache handles rapid alloc/free churn", "[slab][tlc]")
     AL::default_slab s;
     for (int i = 0; i < 200; ++i)
     {
-        void* ptr = s.alloc(64);
+        void* ptr = s.palloc(64);
         REQUIRE(ptr != nullptr);
         *static_cast<int*>(ptr) = i;
         REQUIRE(*static_cast<int*>(ptr) == i);
@@ -644,7 +644,7 @@ TEST_CASE("Slab: TLC mixed cached and non-cached allocations", "[slab][tlc]")
     for (int round = 0; round < 20; ++round)
         for (size_t size : sizes)
         {
-            void* ptr = s.alloc(size);
+            void* ptr = s.palloc(size);
             REQUIRE(ptr != nullptr);
             s.free(ptr, size);
         }
@@ -666,7 +666,7 @@ TEST_CASE("Slab: Calloc on TLC-cached sizes zeros memory", "[slab][tlc][calloc]"
 TEST_CASE("Slab: owns() correctly identifies belonging pointers", "[slab][owns]")
 {
     AL::default_slab s;
-    void* ptr = s.alloc(64);
+    void* ptr = s.palloc(64);
     REQUIRE(ptr != nullptr);
     REQUIRE(s.owns(ptr));
 }
@@ -675,8 +675,8 @@ TEST_CASE("Slab: Two slabs with same config don't share pools", "[slab][isolatio
 {
     AL::default_slab s1;
     AL::default_slab s2;
-    void* p1 = s1.alloc(64);
-    void* p2 = s2.alloc(64);
+    void* p1 = s1.palloc(64);
+    void* p2 = s2.palloc(64);
     REQUIRE(p1 != nullptr);
     REQUIRE(p2 != nullptr);
     REQUIRE(p1 != p2);
@@ -690,8 +690,8 @@ TEST_CASE("Slab: Two slabs with different configs are independent", "[slab][isol
 {
     AL::default_slab sd;
     large_slab sl;
-    void* pd = sd.alloc(64);
-    void* pl = sl.alloc(64);
+    void* pd = sd.palloc(64);
+    void* pl = sl.palloc(64);
     REQUIRE(pd != nullptr);
     REQUIRE(pl != nullptr);
     REQUIRE(!sl.owns(pd));
@@ -715,8 +715,8 @@ TEST_CASE("Slab: Sparse config — exact size allocation", "[slab][sparse]")
     sparse_slab s;
     REQUIRE(s.get_pool_count() == 2);
 
-    void* p8 = s.alloc(8);
-    void* p64 = s.alloc(64);
+    void* p8 = s.palloc(8);
+    void* p64 = s.palloc(64);
     REQUIRE(p8 != nullptr);
     REQUIRE(p64 != nullptr);
     REQUIRE(p8 != p64);
@@ -730,9 +730,9 @@ TEST_CASE("Slab: Sparse config — gap sizes round up", "[slab][sparse]")
     sparse_slab s;
 
     // sizes 9-64 should all go to the 64B pool (pool index 1)
-    void* p16 = s.alloc(16);
-    void* p32 = s.alloc(32);
-    void* p48 = s.alloc(48);
+    void* p16 = s.palloc(16);
+    void* p32 = s.palloc(32);
+    void* p48 = s.palloc(48);
     REQUIRE(p16 != nullptr);
     REQUIRE(p32 != nullptr);
     REQUIRE(p48 != nullptr);
@@ -780,16 +780,16 @@ TEST_CASE("Slab: Wide sparse config {8, 128, 4096}", "[slab][sparse]")
     wide_sparse_slab s;
     REQUIRE(s.get_pool_count() == 3);
 
-    void* p8 = s.alloc(8);
-    void* p128 = s.alloc(128);
-    void* p4096 = s.alloc(4096);
+    void* p8 = s.palloc(8);
+    void* p128 = s.palloc(128);
+    void* p4096 = s.palloc(4096);
     REQUIRE(p8 != nullptr);
     REQUIRE(p128 != nullptr);
     REQUIRE(p4096 != nullptr);
 
     // intermediate sizes round up
-    void* p16 = s.alloc(16);   // → 128B pool
-    void* p256 = s.alloc(256); // → 4096B pool
+    void* p16 = s.palloc(16);   // → 128B pool
+    void* p256 = s.palloc(256); // → 4096B pool
     REQUIRE(p16 != nullptr);
     REQUIRE(p256 != nullptr);
 
@@ -817,11 +817,11 @@ TEST_CASE("Slab: grow and shrink", "[slab][grow][shrink]")
         // exhaust initial 4 blocks
         void* ptrs[8] = {};
         for (int i = 0; i < 4; ++i)
-            ptrs[i] = s.alloc(8);
+            ptrs[i] = s.palloc(8);
         REQUIRE(ptrs[3] != nullptr);
 
         // 5th alloc must trigger growth and succeed
-        ptrs[4] = s.alloc(8);
+        ptrs[4] = s.palloc(8);
         REQUIRE(ptrs[4] != nullptr);
 
         // all pointers must be distinct
@@ -837,7 +837,7 @@ TEST_CASE("Slab: grow and shrink", "[slab][grow][shrink]")
         // exhaust initial chunk and trigger growth
         void* ptrs[8] = {};
         for (int i = 0; i < 5; ++i)
-            ptrs[i] = s.alloc(8);
+            ptrs[i] = s.palloc(8);
         size_t grown = s.get_total_capacity();
         REQUIRE(grown > 4 * 8); // grew beyond initial
 

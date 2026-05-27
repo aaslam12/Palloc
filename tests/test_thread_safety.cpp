@@ -595,7 +595,7 @@ TEST_CASE("Slab thread safety: concurrent mixed-size alloc/free remains stable",
             for (size_t i = 0; i < iterations; ++i)
             {
                 const size_t request_size = request_sizes[(tid + i) % request_sizes.size()];
-                void* ptr = slab.alloc(request_size);
+                void* ptr = slab.palloc(request_size);
                 if (ptr == nullptr)
                 {
                     null_allocations.fetch_add(1, std::memory_order_relaxed);
@@ -643,7 +643,7 @@ TEST_CASE("Slab thread safety: per-class contention restores each pool", "[slab]
 
             for (size_t i = 0; i < iterations; ++i)
             {
-                void* ptr = slab.alloc(size);
+                void* ptr = slab.palloc(size);
                 if (ptr == nullptr)
                 {
                     null_allocations.fetch_add(1, std::memory_order_relaxed);
@@ -691,7 +691,7 @@ TEST_CASE("Slab thread safety: concurrent exhaustion is bounded within a size cl
 
             for (size_t i = 0; i < attempts_per_thread; ++i)
             {
-                void* ptr = slab.alloc(request_size);
+                void* ptr = slab.palloc(request_size);
                 if (ptr == nullptr)
                     continue;
                 local.push_back(ptr);
@@ -815,7 +815,7 @@ TEST_CASE("Slab thread safety: reset after synchronized workers restores all poo
             for (size_t i = 0; i < iterations; ++i)
             {
                 const size_t size = SLAB_SIZE_CLASSES[(tid + i) % SLAB_SIZE_CLASSES.size()];
-                void* ptr = slab.alloc(size);
+                void* ptr = slab.palloc(size);
                 if (ptr == nullptr)
                     continue;
                 slab.free(ptr, size);
@@ -832,7 +832,7 @@ TEST_CASE("Slab thread safety: reset after synchronized workers restores all poo
 
     for (size_t size : SLAB_SIZE_CLASSES)
     {
-        void* ptr = slab.alloc(size);
+        void* ptr = slab.palloc(size);
         REQUIRE(ptr != nullptr);
         slab.free(ptr, size);
     }
@@ -1511,7 +1511,7 @@ TEST_CASE("Slab thread safety: TLC cached class high contention", "[slab][thread
             wait_for_start(start);
             for (size_t i = 0; i < iterations; ++i)
             {
-                void* ptr = slab.alloc(32);
+                void* ptr = slab.palloc(32);
                 if (ptr == nullptr)
                     continue;
                 static_cast<std::byte*>(ptr)[0] = static_cast<std::byte>(tid & 0xFF);
@@ -1547,7 +1547,7 @@ TEST_CASE("Slab thread safety: boundary sizes are correctly routed", "[slab][thr
             for (size_t i = 0; i < iterations; ++i)
             {
                 size_t sz = SLAB_SIZE_CLASSES[tid % SLAB_SIZE_CLASSES.size()];
-                void* ptr = slab.alloc(sz);
+                void* ptr = slab.palloc(sz);
                 if (ptr == nullptr)
                     continue;
                 auto* bytes = static_cast<std::byte*>(ptr);
@@ -1595,7 +1595,7 @@ TEST_CASE("Slab thread safety: data integrity across size classes", "[slab][thre
             for (size_t i = 0; i < allocs_per_thread; ++i)
             {
                 size_t sz = SLAB_SIZE_CLASSES[(tid + i) % SLAB_SIZE_CLASSES.size()];
-                auto* ptr = static_cast<std::byte*>(slab.alloc(sz));
+                auto* ptr = static_cast<std::byte*>(slab.palloc(sz));
                 if (ptr == nullptr)
                     continue;
 
@@ -1653,13 +1653,13 @@ TEST_CASE("Slab thread safety: invalid sizes under contention", "[slab][thread]"
             for (size_t i = 0; i < iterations; ++i)
             {
                 // size 0
-                if (slab.alloc(0) != nullptr)
+                if (slab.palloc(0) != nullptr)
                     non_null.fetch_add(1, std::memory_order_relaxed);
                 // oversized
-                if (slab.alloc(4097) != nullptr)
+                if (slab.palloc(4097) != nullptr)
                     non_null.fetch_add(1, std::memory_order_relaxed);
                 // size_t max
-                if (slab.alloc((size_t)-1) != nullptr)
+                if (slab.palloc((size_t)-1) != nullptr)
                     non_null.fetch_add(1, std::memory_order_relaxed);
                 // invalid free
                 slab.free(nullptr, 64);
@@ -1693,7 +1693,7 @@ TEST_CASE("Slab thread safety: tiny scale fast exhaustion", "[slab][thread]")
             for (size_t i = 0; i < 500; ++i)
             {
                 size_t sz = SLAB_SIZE_CLASSES[(tid + i) % SLAB_SIZE_CLASSES.size()];
-                void* ptr = slab.alloc(sz);
+                void* ptr = slab.palloc(sz);
                 if (ptr != nullptr)
                 {
                     static_cast<std::byte*>(ptr)[0] = std::byte{0xCC};
@@ -1741,7 +1741,7 @@ TEST_CASE("Slab thread safety: multiple slabs concurrent (TLC eviction)", "[slab
             {
                 auto& s = *slabs[(tid + i) % num_slabs];
                 size_t sz = SLAB_SIZE_CLASSES[(tid + i) % SLAB_SIZE_CLASSES.size()];
-                void* ptr = s.alloc(sz);
+                void* ptr = s.palloc(sz);
                 if (ptr != nullptr)
                 {
                     static_cast<std::byte*>(ptr)[0] = std::byte{0xEE};
@@ -1786,7 +1786,7 @@ TEST_CASE("Slab thread safety: TLC epoch after reset then realloc", "[slab][thre
                 for (size_t i = 0; i < iterations; ++i)
                 {
                     size_t sz = SLAB_SIZE_CLASSES[(tid + i) % SLAB_SIZE_CLASSES.size()];
-                    void* ptr = slab.alloc(sz);
+                    void* ptr = slab.palloc(sz);
                     if (ptr != nullptr)
                     {
                         static_cast<std::byte*>(ptr)[0] = std::byte{0xDD};
@@ -1876,7 +1876,7 @@ TEST_CASE("Slab thread safety: each thread uses distinct size class", "[slab][th
 
             for (size_t i = 0; i < iterations; ++i)
             {
-                auto* ptr = static_cast<std::byte*>(slab.alloc(sz));
+                auto* ptr = static_cast<std::byte*>(slab.palloc(sz));
                 if (ptr == nullptr)
                     continue;
 
@@ -1928,7 +1928,7 @@ TEST_CASE("Slab thread safety: alloc-only burst then bulk free", "[slab][thread]
             for (size_t i = 0; i < allocs_per_thread; ++i)
             {
                 size_t sz = SLAB_SIZE_CLASSES[(tid + i) % SLAB_SIZE_CLASSES.size()];
-                void* ptr = slab.alloc(sz);
+                void* ptr = slab.palloc(sz);
                 if (ptr != nullptr)
                 {
                     std::memset(ptr, static_cast<int>(tid & 0xFF), sz);

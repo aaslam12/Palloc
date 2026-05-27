@@ -60,7 +60,7 @@ int main()
         for (size_t c = 0; c < cycles; ++c)
         {
             for (size_t i = 0; i < hold; ++i)
-                ptrs[i] = ds.alloc(sz);
+                ptrs[i] = ds.palloc(sz);
             for (size_t i = 0; i < hold; ++i)
                 ds.free(ptrs[i], sz);
         }
@@ -125,7 +125,7 @@ int main()
         };
 
         default_slab ds{};
-        run_mt("Slab (TLC)", [&] { return ds.alloc(sz); }, [&](void* p) { ds.free(p, sz); });
+        run_mt("Slab (TLC)", [&] { return ds.palloc(sz); }, [&](void* p) { ds.free(p, sz); });
         run_mt("jemalloc    ", [&] { return mallocx(sz, 0); }, [](void* p) { dallocx(p, 0); });
         std::cout << "\n";
     }
@@ -176,7 +176,7 @@ int main()
         };
 
         default_slab ds{};
-        run_mixed("Slab (TLC)", [&](size_t sz) { return ds.alloc(sz); }, [&](void* p, size_t sz) { ds.free(p, sz); });
+        run_mixed("Slab (TLC)", [&](size_t sz) { return ds.palloc(sz); }, [&](void* p, size_t sz) { ds.free(p, sz); });
         run_mixed("jemalloc    ", [](size_t sz) { return mallocx(sz, 0); }, [](void* p, size_t) { dallocx(p, 0); });
         std::cout << "\n";
     }

@@ -135,7 +135,7 @@ void* dynamic_slab<Tconfig>::palloc(size_t size)
 
     for (slab_node* node = head.load(std::memory_order_acquire); node; node = node->next)
     {
-        void* p = node->value.alloc(size);
+        void* p = node->value.palloc(size);
         if (p)
             return p;
     }
@@ -146,7 +146,7 @@ void* dynamic_slab<Tconfig>::palloc(size_t size)
     // double check if another thread may have grown while we waited
     for (slab_node* node = head.load(std::memory_order_relaxed); node; node = node->next)
     {
-        void* p = node->value.alloc(size);
+        void* p = node->value.palloc(size);
         if (p)
             return p;
     }
@@ -158,7 +158,7 @@ void* dynamic_slab<Tconfig>::palloc(size_t size)
     head.store(new_node, std::memory_order_release);
     node_count.fetch_add(1, std::memory_order_relaxed);
 
-    return new_node->value.alloc(size);
+    return new_node->value.palloc(size);
 }
 
 template<slab_config_type Tconfig>
