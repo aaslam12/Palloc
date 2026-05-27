@@ -126,7 +126,7 @@ TEST_CASE("Slab: Linux reserve-first mapping inflates virtual size with low RSS"
 #if defined(__SANITIZE_THREAD__) || defined(__SANITIZE_ADDRESS__)
     constexpr std::uint64_t MAX_ANON_KB = 64ULL * 1024ULL;  // 64 MiB under sanitizers
 #else
-    constexpr std::uint64_t MAX_ANON_KB = 16ULL * 1024ULL;  // 16 MiB normally
+    constexpr std::uint64_t MAX_ANON_KB = 20ULL * 1024ULL;  // 20 MiB: includes flat bitmaps (~400 KB) committed upfront
 #endif
     REQUIRE(after.vm_size >= EXPECTED_RESERVE_KB);
     REQUIRE(after.vm_rss <= 64ULL * 1024ULL);  // <= 64 MiB

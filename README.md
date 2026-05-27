@@ -165,29 +165,29 @@ Results on Linux (12-core Intel i5 11th gen), compiled with GCC `-O3`.
 
 | Test | Operations | Time | Throughput |
 |------|-----------|------|-----------|
-| Partial pool cycles (1K cycles, 50K allocs/cycle) | 100M alloc+free | 1.57 s | **63.8M ops/s** |
-| Full pool exhaustion cycles (1K cycles, 1M block pool) | 2B alloc+free | 32.5 s | **61.6M ops/s** |
+| Partial pool cycles (1K cycles, 50K allocs/cycle) | 100M alloc+free | 1.12 s | **89.0M ops/s** |
+| Full pool exhaustion cycles (1K cycles, 1M block pool) | 2B alloc+free | 23.8 s | **83.9M ops/s** |
 
 ### Slab allocator
 
 | Test | Operations | Time | Throughput |
 |------|-----------|------|-----------|
-| Mixed sizes (1M cycles, 32 allocs/cycle: 32/64/128/256B) | 64M alloc+free | 0.26 s | **245M ops/s** |
-| Rapid single-size (10M cycles, 64B) | 20M alloc+free | 0.06 s | **325M ops/s** |
+| Mixed sizes (1M cycles, 32 allocs/cycle: 32/64/128/256B) | 64M alloc+free | 0.28 s | **229M ops/s** |
+| Rapid single-size (10M cycles, 64B) | 20M alloc+free | 0.07 s | **303M ops/s** |
 
 ### Slab TLC (Thread-Local Cache)
 
 | Test | Operations | Throughput |
 |------|-----------|-----------|
-| TLC hot path (concurrent, all size classes) | 12M ops | **2.1B ops/s** |
-| Multi-slab TLC eviction path | 2.4M ops | **123M ops/s** |
+| TLC hot path (concurrent, all size classes) | 12M ops | **1.4B ops/s** |
+| Multi-slab TLC eviction path | 2.4M ops | **172M ops/s** |
 
 ### Arena allocator
 
 | Test | Operations | Throughput |
 |------|-----------|-----------|
-| Sequential small allocs (200K × 8B) | 200K allocs | **112M allocs/s** |
-| Alloc/reset cycles (100K cycles, 1K × 100B per cycle) | 100M ops | 184K cycles/s |
+| Sequential small allocs (200K × 8B) | 200K allocs | **111M allocs/s** |
+| Alloc/reset cycles (100K cycles, 1K × 100B per cycle) | 100M ops | 185K cycles/s |
 
 ### Pool vs malloc (single-thread)
 
@@ -256,21 +256,21 @@ Fixed-size order objects (64B) with random fill/cancel/match, modelling a limit 
 
 | Allocator | ns/op | MOps/s |
 |-----------|-------|--------|
-| **malloc** | **50.9** | 19.7 |
-| **Slab (TLC)** | **51.1** | 19.6 |
+| **Slab (TLC)** | **50.6** | 19.8 |
+| malloc | 51.8 | 19.3 |
 | Dynamic Slab | 52.9 | 18.9 |
-| jemalloc | 54.4 | 18.4 |
-| Pool | 57.3 | 17.5 |
+| Pool | 53.3 | 18.8 |
+| jemalloc | 55.1 | 18.2 |
 
 **Multi-threaded, 8 threads (ns/op):**
 
 | Allocator | ns/op | MOps/s |
 |-----------|-------|--------|
-| **Slab (TLC)** | **8.9** | 112.5 |
-| malloc | 9.2 | 109.1 |
-| Dynamic Slab | 9.7 | 103.0 |
-| jemalloc | 10.1 | 98.9 |
-| Pool | 74.9 | 13.4 |
+| **Slab (TLC)** | **8.7** | 114.3 |
+| malloc | 9.4 | 106.4 |
+| Dynamic Slab | 9.7 | 103.4 |
+| jemalloc | 10.2 | 98.0 |
+| Pool | 48.1 | 20.8 |
 
 Slab's per-thread TLC eliminates contention in the multi-threaded path, matching jemalloc's scalability while Pool and Dynamic Slab regress severely under mutex contention.
 
@@ -280,11 +280,11 @@ Variable-size market messages (8–256B) parsed and forwarded, modelling a marke
 
 | Allocator | ns/msg | MOps/s |
 |-----------|--------|--------|
-| Arena (batch) | **16.7** | 59.9 |
+| Arena (batch) | **16.8** | 59.5 |
 | malloc | 20.7 | 48.3 |
-| Slab (TLC) | 21.5 | 46.5 |
-| Dynamic Slab | 23.4 | 42.8 |
-| jemalloc | 27.3 | 36.7 |
+| Slab (TLC) | 20.3 | 49.3 |
+| Dynamic Slab | 23.8 | 42.0 |
+| jemalloc | 27.3 | 36.6 |
 
 Arena benefits from batch allocation of many same-size messages. malloc leads due to per-thread fastbin reuse across the fixed message lifecycle.
 
@@ -294,10 +294,10 @@ Arena benefits from batch allocation of many same-size messages. malloc leads du
 
 | Allocator | ns/op | p50 (ns) | p99 (ns) |
 |-----------|-------|----------|----------|
-| **Slab (TLC)** | **30.9** | 49 | 114 |
-| Dynamic Slab | 34.3 | 51 | 115 |
-| malloc | 38.2 | 51 | 366 |
-| jemalloc | 46.7 | 57 | 381 |
+| **Slab (TLC)** | **38.2** | 50 | 277 |
+| malloc | 38.0 | 50 | 370 |
+| Dynamic Slab | 41.4 | 52 | 284 |
+| jemalloc | 46.6 | 56 | 379 |
 
 Dynamic Slab is substantially slower under this workload because its radix tree must insert one leaf entry per page on every slab creation, and with 50K mixed-size slots it creates ~131 slab_nodes each occupying ~93 pages. Slab (TLC) leads because its fixed size classes eliminate fragmentation overhead entirely — each size class has a dedicated pool with O(1) bitmap alloc/free and no metadata per allocation. Pool is excluded as a fixed-capacity allocator not suited to unbounded mixed-size fragmentation workloads.
 
@@ -329,11 +329,11 @@ Dynamic Slab is substantially slower under this workload because its radix tree 
 
 | Allocator | p50 (ns) | p99 (ns) |
 |-----------|----------|----------|
-| **Slab (TLC)** | **317** | 157,473 |
-| Dynamic Slab | 13,473 | 140,291 |
-| Pool | ~7.6M | ~8.2M |
-| jemalloc | ~1.55M | ~2.25M |
-| malloc | ~1.15M | ~1.91M |
+| **Pool** | **317** | 1,895 |
+| Slab (TLC) | ~1.7M | ~2.8M |
+| Dynamic Slab | ~2.2M | ~2.9M |
+| jemalloc | ~1.9M | ~2.4M |
+| malloc | ~1.2M | ~1.7M |
 
 With equal configs on a level playing field, Slab's TLC gives it the best E2E and throughput. The TLC keeps alloc/free cache-hot within each thread's working set. Dynamic Slab's radix tree lookup on every free adds overhead but gives lower producer latency since it never blocks on TLC flush. malloc and jemalloc suffer from cross-thread arena free deferral.
 
@@ -368,10 +368,10 @@ Slab's TLC gives it a ~1.5x cycle advantage over jemalloc here. Two structural r
 
 | Allocator | cycles/op |
 |-----------|-----------|
-| **Arena** | **12.7** |
-| malloc | 15.4 |
-| jemalloc | 30.6 |
-| Pool | 37.9 |
+| **Arena** | **12.5** |
+| malloc | 13.7 |
+| jemalloc | 30.1 |
+| Pool | 27.9 |
 
 Arena remains the fastest for pure linear allocation. Pool's CAS overhead on alloc makes it slower than malloc for the no-free linear pattern.
 
@@ -381,10 +381,10 @@ Single-threaded alloc+free pairs at 64B, 1M ops.
 
 | Allocator | cycles/op |
 |-----------|-----------|
-| malloc | 5.6 |
-| **Slab (TLC)** | **6.0** |
-| jemalloc | 12.0 |
-| Pool | 35.1 |
+| malloc | 6.2 |
+| **Slab (TLC)** | **7.2** |
+| jemalloc | 12.6 |
+| Pool | 26.1 |
 
 Slab matches malloc for fixed-size workloads. Pool pays CAS overhead on every direct alloc/free; through slab's TLC, pool is only touched on batch operations.
 
@@ -394,18 +394,18 @@ Slab matches malloc for fixed-size workloads. Pool pays CAS overhead on every di
 
 | Allocator | cycles/op |
 |-----------|-----------|
-| **Slab (TLC)** | **10.3** |
-| malloc | 15.7 |
-| Dynamic Slab | 14.4 |
-| jemalloc | 21.4 |
+| **Slab (TLC)** | **11.8** |
+| malloc | 15.4 |
+| Dynamic Slab | 16.6 |
+| jemalloc | 20.5 |
 
 ### Multi-threaded (12 threads)
 
 | Test | Slab (TLC) | Dynamic Slab | jemalloc | malloc |
 |------|-----------|-------------|----------|--------|
-| Single size (32B) | **1.1** | 2.5 | 2.4 | 1.0 |
-| Mixed sizes | 2.1 | 3.0 | 4.4 | **1.5** |
-| Batch hold (500 objects) | 9.4 | 11.7 | **4.5** | 4.8 |
+| Single size (32B) | **0.9** | 2.7 | 2.5 | 1.5 |
+| Mixed sizes | **2.0** | 4.9 | 2.5 | 1.9 |
+| Batch hold (500 objects) | 9.9 | 21.1 | **4.5** | 3.2 |
 
 Slab's TLC combined with lock-free pool now scales well under contention. The batch-hold pattern shows Dynamic Slab's high variance due to radix tree overhead under concurrent access.
 
@@ -413,10 +413,10 @@ Slab's TLC combined with lock-free pool now scales well under contention. The ba
 
 | Size | Slab | jemalloc | calloc |
 |------|------|----------|--------|
-| 32B | 9.2 | 15.3 | **11.2** |
-| 256B | **10.5** | 16.8 | 12.9 |
-| 1024B | **16.2** | 22.3 | 18.9 |
-| 4096B | **38.8** | 44.7 | 39.4 |
+| 32B | 9.4 | 16.0 | **12.1** |
+| 256B | **10.3** | 16.8 | 13.0 |
+| 1024B | 20.1 | **24.0** | 22.1 |
+| 4096B | **37.8** | 46.5 | 40.5 |
 
 ### Known limitations
 
