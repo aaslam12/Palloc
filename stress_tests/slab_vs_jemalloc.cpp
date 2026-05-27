@@ -68,7 +68,7 @@ int main()
         std::chrono::duration<double> ds_time = t1 - t0;
         std::cout << "  Slab (TLC):   " << ns_per_op(ds_time.count(), cycles * hold * 2) << " ns/op | "
                   << throughput(ds_time.count(), cycles * hold * 2) << " MOps/s\n";
-        std::cout << "  "Capacity: " << ds.get_total_capacity() << "\n";
+        std::cout << "  Capacity: " << ds.get_total_capacity() << "\n";
 
         // jemalloc
         t0 = std::chrono::high_resolution_clock::now();
