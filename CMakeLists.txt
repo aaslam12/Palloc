@@ -152,7 +152,17 @@ if(PALLOC_BUILD_STRESS_TESTS)
   find_library(JEMALLOC_LIB jemalloc)
   find_path(JEMALLOC_INCLUDE jemalloc/jemalloc.h)
 
+  # LD_PRELOAD shims
+  add_library(palloc_shim SHARED stress_tests/palloc_shim.cpp)
+  target_link_libraries(palloc_shim PRIVATE palloc dl)
+  set_target_properties(palloc_shim PROPERTIES
+    RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}"
+    LIBRARY_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}"
+  )
+
+
   file(GLOB STRESS_SRCS "stress_tests/*.cpp")
+  list(FILTER STRESS_SRCS EXCLUDE REGEX ".*/palloc_shim\\.cpp$")
   foreach(stress_src ${STRESS_SRCS})
     get_filename_component(test_name ${stress_src} NAME_WE)
     add_executable(${test_name} ${stress_src})
