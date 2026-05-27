@@ -411,16 +411,50 @@ void pool_view::free(void* ptr) noexcept
 
 void pool_view::free_batch(std::span<void*> ptrs) noexcept
 {
-    for (void* ptr : ptrs)
+    if (m_chunk_bitmaps)
     {
-        if (!ptr)
-            continue;
-        assert(owns(ptr));
-        size_t slot = static_cast<size_t>(static_cast<std::byte*>(ptr) - m_memory) >> m_block_shift;
-        if (m_chunk_bitmaps)
-            free_to_chunk(slot / m_blocks_per_chunk, slot % m_blocks_per_chunk);
-        else
+        // accumulate masks per (chunk, word) then flush with one fetch_and per word
+        struct Entry { size_t chunk; size_t word; uint64_t mask; };
+        Entry entries[128];
+        size_t n = 0;
+        for (void* ptr : ptrs)
+        {
+            if (!ptr) continue;
+            assert(owns(ptr));
+            size_t slot  = static_cast<size_t>(static_cast<std::byte*>(ptr) - m_memory) >> m_block_shift;
+            size_t chunk = slot / m_blocks_per_chunk;
+            size_t bit   = slot % m_blocks_per_chunk;
+            size_t word  = bit >> 6;
+            uint64_t mask = uint64_t(1) << (bit & 63);
+            bool merged = false;
+            for (size_t i = 0; i < n; ++i)
+            {
+                if (entries[i].chunk == chunk && entries[i].word == word)
+                {
+                    entries[i].mask |= mask;
+                    merged = true;
+                    break;
+                }
+            }
+            if (!merged && n < 128)
+                entries[n++] = {chunk, word, mask};
+        }
+        for (size_t i = 0; i < n; ++i)
+        {
+            palloc_atomic<uint64_t>* words = m_chunk_bitmaps[entries[i].chunk];
+            if (words)
+                words[entries[i].word].fetch_and(~entries[i].mask, std::memory_order_release);
+        }
+    }
+    else
+    {
+        for (void* ptr : ptrs)
+        {
+            if (!ptr) continue;
+            assert(owns(ptr));
+            size_t slot = static_cast<size_t>(static_cast<std::byte*>(ptr) - m_memory) >> m_block_shift;
             bitmap_free_bit(m_embedded_bitmap, slot);
+        }
     }
     m_free_count.fetch_add(ptrs.size(), std::memory_order_relaxed);
 }
