@@ -18,8 +18,7 @@ pool::pool(size_t block_size, size_t block_count) : pool()
     init(block_size, block_count);
 }
 
-pool::pool(pool&& other) noexcept
-    : m_region(other.m_region), m_region_size(other.m_region_size), m_view(std::move(other.m_view)), m_free_count(other.m_free_count.load())
+pool::pool(pool&& other) noexcept : m_region(other.m_region), m_region_size(other.m_region_size), m_view(std::move(other.m_view))
 {
     other.clear();
 }
@@ -35,7 +34,6 @@ pool& pool::operator=(pool&& other) noexcept
     m_region = other.m_region;
     m_region_size = other.m_region_size;
     m_view = std::move(other.m_view);
-    m_free_count.store(other.m_free_count.load());
 
     other.clear();
     return *this;
@@ -66,7 +64,6 @@ void pool::init(size_t block_size, size_t block_count)
 
     m_region = static_cast<std::byte*>(ptr);
     m_view.init_from_region(m_region, block_size, block_count);
-    m_free_count.store(block_count, std::memory_order_relaxed);
 }
 
 pool::~pool()
@@ -89,8 +86,6 @@ void* pool::alloc()
     check_asserts();
 
     void* ptr = m_view.alloc();
-    if (ptr != nullptr)
-        m_free_count.store(m_view.free_count(), std::memory_order_relaxed);
     return ptr;
 }
 
@@ -102,7 +97,6 @@ size_t pool::alloc_batched_internal(size_t num_objects, void* out[])
     check_asserts();
 
     size_t n = m_view.alloc_batch(num_objects, out);
-    m_free_count.store(m_view.free_count(), std::memory_order_relaxed);
     return n;
 }
 
@@ -115,7 +109,6 @@ void pool::free_batched_internal(size_t num_objects, void* in[])
 
     std::span<void*> s(in, num_objects);
     m_view.free_batch(s);
-    m_free_count.store(m_view.free_count(), std::memory_order_relaxed);
 }
 
 void* pool::calloc()
@@ -130,7 +123,6 @@ void pool::reset()
 {
     check_asserts();
     m_view.reset();
-    m_free_count.store(m_view.block_count(), std::memory_order_relaxed);
 }
 
 void pool::clear()
@@ -138,7 +130,6 @@ void pool::clear()
     m_region = nullptr;
     m_region_size = 0;
     m_view = pool_view{};
-    m_free_count.store(0, std::memory_order_relaxed);
 }
 
 bool pool::owns(void* ptr) const
@@ -155,12 +146,11 @@ void pool::free(void* ptr)
     assert(owns(ptr) && "Pointer does not belong to this pool");
 
     m_view.free(ptr);
-    m_free_count.store(m_view.free_count(), std::memory_order_relaxed);
 }
 
 size_t pool::get_free_space() const
 {
-    return m_free_count.load(std::memory_order_relaxed) * m_view.block_size();
+    return m_view.free_count() * m_view.block_size();
 }
 
 size_t pool::get_capacity() const

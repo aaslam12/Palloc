@@ -84,8 +84,6 @@ private:
     std::byte* m_region = nullptr; // owned mmap'd memory
     size_t m_region_size = 0;      // total mmap'd size
     pool_view m_view;              // non owning pool_view that is given memory by this class
-    palloc_atomic<size_t> m_free_count{0};
-
     void check_asserts() const;
 };
 } // namespace AL

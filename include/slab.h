@@ -226,6 +226,7 @@ private:
 
     // base address of each pool's payload sub-region
     std::array<std::byte*, Tconfig::NUM_SIZE_CLASSES> m_pool_bases{};
+    std::array<palloc_atomic<bool>, Tconfig::NUM_SIZE_CLASSES> m_initial_committed{};
 
     // coarse bitmap per pool: 1 bit per chunk, 1 = committed
     std::array<palloc_atomic<uint64_t>*, Tconfig::NUM_SIZE_CLASSES> m_coarse_bitmaps{};
@@ -239,6 +240,7 @@ private:
     size_t slab_id;
 
     void grow_pool(size_t index) noexcept;
+    bool ensure_initial_commit(size_t index) noexcept;
     void decommit_chunk(size_t index, size_t chunk_idx) noexcept;
 };
 
@@ -248,19 +250,28 @@ slab<Tconfig>::slab() : epoch(0), slab_id(next_slab_id.fetch_add(1, std::memory_
     constexpr size_t raw_size = Tconfig::compute_total_region_size();
     size_t page_size = AL::platform_mem::page_size();
     size_t rounded_raw_size = ((raw_size + page_size - 1) / page_size) * page_size;
-    m_region_size = Tconfig::VIRTUAL_MEM_PREALLOC_SIZE < rounded_raw_size ? rounded_raw_size : Tconfig::VIRTUAL_MEM_PREALLOC_SIZE;
+    size_t layout_size = 0;
+    for (size_t i = 0; i < Tconfig::NUM_SIZE_CLASSES; ++i)
+    {
+        auto const& sc = Tconfig::SIZE_CLASS_CONFIG[i];
+        size_t mask = sc.byte_size - 1;
+        layout_size = (layout_size + mask) & ~mask;
+        size_t pool_bytes = sc.byte_size * Tconfig::VIRTUAL_BLOCK_CEILINGS[i];
+        size_t pool_bytes_rounded = ((pool_bytes + page_size - 1) / page_size) * page_size;
+        layout_size += pool_bytes_rounded;
+    }
+    size_t desired = Tconfig::VIRTUAL_MEM_PREALLOC_SIZE;
+    if (layout_size > desired)
+        desired = layout_size;
+    m_region_size = desired < rounded_raw_size ? rounded_raw_size : desired;
 
     void* mem = AL::platform_mem::virtual_alloc(m_region_size);
     if (mem == nullptr)
         throw std::runtime_error("slab virtual_alloc failed");
 
-    if (!AL::platform_mem::virtual_commit(mem, raw_size))
-    {
-        AL::platform_mem::free(mem, m_region_size);
-        throw std::runtime_error("slab virtual_commit failed: not enough physical memory");
-    }
-
     m_region = static_cast<std::byte*>(mem);
+    for (auto& committed : m_initial_committed)
+        committed.store(false, std::memory_order_relaxed);
 
     // per-pool: coarse bitmap + chunk_bitmaps array + initial fine bitmap for chunk 0
     std::byte* cursor = m_region;
@@ -345,7 +356,9 @@ slab<Tconfig>::slab() : epoch(0), slab_id(next_slab_id.fetch_add(1, std::memory_
         coarse[0].fetch_or(uint64_t(1), std::memory_order_relaxed);
 
         shared_pools[i].init_from_region(cursor, chunk_bitmaps, sc.byte_size, chunk_size, ceiling, chunk_size);
-        cursor += sc.byte_size * chunk_size;
+        size_t pool_bytes = sc.byte_size * ceiling;
+        size_t pool_bytes_rounded = ((pool_bytes + page_size - 1) / page_size) * page_size;
+        cursor += pool_bytes_rounded;
     }
 }
 
@@ -424,6 +437,8 @@ template<slab_config_type Tconfig>
 void slab<Tconfig>::grow_pool(size_t index) noexcept
 {
     pool_view& p = shared_pools[index];
+    if (!ensure_initial_commit(index)) [[unlikely]]
+        return;
 
     if (p.committed_blocks() >= p.virtual_block_ceiling())
         return;
@@ -450,7 +465,9 @@ void slab<Tconfig>::grow_pool(size_t index) noexcept
         size_t words = (chunk_blocks + 63) / 64;
         if (tail)
             fine[words - 1].store(~uint64_t(0) << tail, std::memory_order_relaxed);
-        m_pool_chunk_bitmaps[index][chunk_idx] = fine;
+        // release-store the bitmap pointer so readers see fully-initialized bitmap
+        std::atomic_ref<palloc_atomic<uint64_t>*>(m_pool_chunk_bitmaps[index][chunk_idx])
+            .store(fine, std::memory_order_release);
 
         // set coarse bit
         size_t cw = chunk_idx / 64, cb = chunk_idx % 64;
@@ -459,6 +476,24 @@ void slab<Tconfig>::grow_pool(size_t index) noexcept
 
     // make new blocks visible
     p.advance_committed(old + chunk_blocks);
+}
+
+template<slab_config_type Tconfig>
+bool slab<Tconfig>::ensure_initial_commit(size_t index) noexcept
+{
+    if (m_initial_committed[index].load(std::memory_order_acquire))
+        return true;
+
+    size_t block_size = Tconfig::SIZE_CLASS_CONFIG[index].byte_size;
+    size_t chunk_blocks = Tconfig::SIZE_CLASS_CONFIG[index].num_blocks;
+    size_t page_size = AL::platform_mem::page_size();
+    size_t commit_bytes = block_size * chunk_blocks;
+    size_t commit_bytes_rounded = ((commit_bytes + page_size - 1) / page_size) * page_size;
+    if (!AL::platform_mem::virtual_commit(m_pool_bases[index], commit_bytes_rounded))
+        return false;
+
+    m_initial_committed[index].store(true, std::memory_order_release);
+    return true;
 }
 
 template<slab_config_type Tconfig>
@@ -493,6 +528,8 @@ void* slab<Tconfig>::alloc_internal(size_t size)
         return nullptr;
 
     pool_view& p = shared_pools[index];
+    if (!ensure_initial_commit(index)) [[unlikely]]
+        return nullptr;
 
     // if is part of the TLC
     if (index < Tconfig::NUM_CACHED_CLASSES) [[likely]]

@@ -244,12 +244,13 @@ void pool_view::init_from_region(void* base,
 
 size_t pool_view::alloc_from_chunk(size_t chunk_idx) noexcept
 {
-    palloc_atomic<uint64_t>* words = m_chunk_bitmaps[chunk_idx];
+    // acquire-load the bitmap pointer so we see all writes from grow_pool
+    palloc_atomic<uint64_t>* words =
+        std::atomic_ref<palloc_atomic<uint64_t>*>(m_chunk_bitmaps[chunk_idx])
+            .load(std::memory_order_acquire);
 
     if (!words)
         return static_cast<size_t>(-1);
-
-    // per-chunk hint: use global hint shifted to chunk
     size_t tail = m_blocks_per_chunk % 64;
     // mask tail bits in last word
     size_t last_w = m_words_per_chunk - 1;
@@ -282,7 +283,9 @@ size_t pool_view::alloc_from_chunk(size_t chunk_idx) noexcept
 
 size_t pool_view::alloc_batch_from_chunk(size_t chunk_idx, size_t count, size_t out[]) noexcept
 {
-    palloc_atomic<uint64_t>* words = m_chunk_bitmaps[chunk_idx];
+    palloc_atomic<uint64_t>* words =
+        std::atomic_ref<palloc_atomic<uint64_t>*>(m_chunk_bitmaps[chunk_idx])
+            .load(std::memory_order_acquire);
     if (!words)
         return 0;
 

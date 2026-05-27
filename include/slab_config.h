@@ -154,7 +154,7 @@ struct slab_config
 
     inline static constexpr auto INDEX_LUT = compute_index_lut();
 
-    // compute total bytes needed for all pools' sub-regions (with alignment padding).
+    // compute total bytes needed for all pools' initial sub-regions (with alignment padding).
     // assumes page-aligned base (mmap), so first pool always starts aligned.
     static constexpr std::size_t compute_total_region_size()
     {
@@ -172,6 +172,7 @@ struct slab_config
         }
         return total;
     }
+
 };
 
 template<typename T>
