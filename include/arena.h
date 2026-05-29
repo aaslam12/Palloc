@@ -74,7 +74,7 @@ public:
         if (length == 0 || length > capacity || memory == nullptr)
             return nullptr;
 
-        // zero runtime overhead for calculation.
+        // power of two alignment roundup
         size_t total_to_add = (length + Talignment - 1) & ~(Talignment - 1);
         size_t offset = used.fetch_add(total_to_add, std::memory_order_relaxed);
 

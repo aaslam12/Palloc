@@ -1,9 +1,13 @@
 #pragma once
 
 #include <cstddef>
+#include <cstring>
 
 #ifdef _WIN32
+#include <memoryapi.h>
+#include <minwindef.h>
 #include <windows.h>
+#include <winnt.h>
 #else
 #include <sys/mman.h>
 #include <unistd.h>
@@ -16,8 +20,7 @@ inline constexpr bool palloc_is_windows =
     false;
 #endif
 
-// Portable compiler hints for cold/noinline functions.
-// Keeps rarely-executed code out of the hot path's icache footprint.
+// portable compiler hints for cold/noinline functions
 #if defined(__GNUC__) || defined(__clang__)
 #define PALLOC_COLD __attribute__((noinline, cold))
 #elif defined(_MSC_VER)
@@ -29,10 +32,12 @@ inline constexpr bool palloc_is_windows =
 namespace AL
 {
 
-//
-// replaces platform specific system calls with a wrapper that changes which function is called based on what system you compiled for.
-// has zero runtime overhead
-//
+constexpr size_t ONE_KB = 1024;
+constexpr size_t ONE_MB = 1024 * ONE_KB;
+constexpr size_t ONE_GB = 1024 * ONE_MB;
+constexpr size_t ONE_TB = 1024 * ONE_GB;
+
+// platform-specific memory primitives - zero runtime overhead
 struct platform_mem
 {
     [[nodiscard]] static void* alloc(std::size_t size) noexcept
@@ -42,6 +47,43 @@ struct platform_mem
 #else
         void* ptr = mmap(nullptr, size, PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);
         return ptr == MAP_FAILED ? nullptr : ptr;
+#endif
+    }
+
+    // reserves virtual address space without backing it with physical memory
+    [[nodiscard]] static void* virtual_alloc(std::size_t size) noexcept
+    {
+#ifdef _WIN32
+        return VirtualAlloc(nullptr, size, MEM_RESERVE, PAGE_NOACCESS);
+#else
+        void* ptr = mmap(nullptr,
+                         size,
+                         PROT_NONE,
+                         MAP_PRIVATE | MAP_ANONYMOUS | MAP_NORESERVE,
+                         -1,
+                         0);
+        return ptr == MAP_FAILED ? nullptr : ptr;
+#endif
+    }
+
+    // commits reserved pages - makes them readable and writable
+    static bool virtual_commit(void* ptr, std::size_t size) noexcept
+    {
+#ifdef _WIN32
+        return VirtualAlloc(ptr, size, MEM_COMMIT, PAGE_READWRITE);
+#else
+        return mprotect(ptr, size, PROT_READ | PROT_WRITE) == 0;
+#endif
+    }
+
+    // decommits physical pages and revokes access permissions
+    static bool virtual_free(void* ptr, std::size_t size) noexcept
+    {
+#ifdef _WIN32
+        return VirtualFree(ptr, size, MEM_DECOMMIT) != 0;
+#else
+        madvise(ptr, size, MADV_DONTNEED);
+        return mprotect(ptr, size, PROT_NONE) == 0;
 #endif
     }
 

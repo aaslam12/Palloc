@@ -1,4 +1,4 @@
-#include "dynamic_slab.h"
+#include "slab.h"
 #include <algorithm>
 #include <atomic>
 #include <chrono>
@@ -42,7 +42,7 @@ int main()
 {
     const size_t threads = worker_count();
 
-    std::cout << "=== Dynamic Slab vs jemalloc (unbounded allocation) ===\n";
+    std::cout << "=== Slab vs jemalloc (unbounded allocation) ===\n";
     std::cout << "Threads: " << threads << "\n\n";
 
     // Test 1: Single-threaded throughput with long-lived allocations
@@ -54,8 +54,8 @@ int main()
 
         std::vector<void*> ptrs(hold);
 
-        // Dynamic Slab
-        default_dynamic_slab ds{};
+        // Slab
+        default_slab ds{};
         auto t0 = std::chrono::high_resolution_clock::now();
         for (size_t c = 0; c < cycles; ++c)
         {
@@ -66,9 +66,9 @@ int main()
         }
         auto t1 = std::chrono::high_resolution_clock::now();
         std::chrono::duration<double> ds_time = t1 - t0;
-        std::cout << "  Dynamic Slab: " << ns_per_op(ds_time.count(), cycles * hold * 2) << " ns/op | "
+        std::cout << "  Slab (TLC):   " << ns_per_op(ds_time.count(), cycles * hold * 2) << " ns/op | "
                   << throughput(ds_time.count(), cycles * hold * 2) << " MOps/s\n";
-        std::cout << "  Slabs created: " << ds.get_slab_count() << "\n";
+        std::cout << "  Capacity: " << ds.get_total_capacity() << "\n";
 
         // jemalloc
         t0 = std::chrono::high_resolution_clock::now();
@@ -124,8 +124,8 @@ int main()
             std::cout << "  " << label << ": " << ns_per_op(elapsed.count(), ops) << " ns/op | " << throughput(elapsed.count(), ops) << " MOps/s\n";
         };
 
-        default_dynamic_slab ds{};
-        run_mt("Dynamic Slab", [&] { return ds.palloc(sz); }, [&](void* p) { ds.free(p, sz); });
+        default_slab ds{};
+        run_mt("Slab (TLC)", [&] { return ds.palloc(sz); }, [&](void* p) { ds.free(p, sz); });
         run_mt("jemalloc    ", [&] { return mallocx(sz, 0); }, [](void* p) { dallocx(p, 0); });
         std::cout << "\n";
     }
@@ -175,8 +175,8 @@ int main()
             std::cout << "  " << label << ": " << ns_per_op(elapsed.count(), ops) << " ns/op | " << throughput(elapsed.count(), ops) << " MOps/s\n";
         };
 
-        default_dynamic_slab ds{};
-        run_mixed("Dynamic Slab", [&](size_t sz) { return ds.palloc(sz); }, [&](void* p, size_t sz) { ds.free(p, sz); });
+        default_slab ds{};
+        run_mixed("Slab (TLC)", [&](size_t sz) { return ds.palloc(sz); }, [&](void* p, size_t sz) { ds.free(p, sz); });
         run_mixed("jemalloc    ", [](size_t sz) { return mallocx(sz, 0); }, [](void* p, size_t) { dallocx(p, 0); });
         std::cout << "\n";
     }

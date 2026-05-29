@@ -1,8 +1,8 @@
 #pragma once
 
 #include "arena.h"
-#include "dynamic_slab.h"
 #include "pool.h"
+#include "slab.h"
 #include <cstddef>
 
 namespace AL
@@ -19,9 +19,9 @@ struct arena_allocator
     using size_type = std::size_t;
     using difference_type = std::ptrdiff_t;
 
-    arena* m_arena;
+    arena<>* m_arena;
 
-    arena_allocator(arena* a) noexcept : m_arena(a)
+    arena_allocator(arena<>* a) noexcept : m_arena(a)
     {}
 
     template<typename U>
@@ -42,7 +42,7 @@ struct arena_allocator
     {
         (void)p;
         (void)n;
-        // no op. memory is freed only when arena is destroyed
+        // no-op: memory is freed when the arena is destroyed
     }
 
     template<typename U>
@@ -69,9 +69,9 @@ struct slab_allocator
     using size_type = std::size_t;
     using difference_type = std::ptrdiff_t;
 
-    dynamic_slab* m_slab;
+    default_slab* m_slab;
 
-    slab_allocator(dynamic_slab* s) noexcept : m_slab(s)
+    slab_allocator(default_slab* s) noexcept : m_slab(s)
     {}
 
     template<typename U>
@@ -118,7 +118,7 @@ struct pool_allocator
     using size_type = std::size_t;
     using difference_type = std::ptrdiff_t;
 
-    // pool must allocate fixed-size blocks equal to sizeof(T)
+    // pool block size must equal sizeof(T)
     pool* m_pool;
 
     pool_allocator(pool* p) noexcept : m_pool(p)

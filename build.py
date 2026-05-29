@@ -39,6 +39,16 @@ def main():
         help="Build with PALLOC_SINGLE_THREADED (no-op mutexes, non-atomic counters)",
     )
     parser.add_argument(
+        "--enable-thp",
+        action="store_true",
+        help="Build with support for transparent huge pages.",
+    )
+    parser.add_argument(
+        "--use-2mb-huge-pages",
+        action="store_true",
+        help="Build with support for transparent huge pages.",
+    )
+    parser.add_argument(
         "--static", action="store_true", help="Link libraries statically"
     )
     parser.add_argument(
@@ -72,10 +82,9 @@ def main():
     build_dir = os.path.join(project_root, "build", args.config + sanitizer_suffix)
 
     # Executable name handling for Windows
-    executable_name = "palloc"
+    executable_names = ["palloc_exe", "palloc"]
     if platform.system() == "Windows":
-        executable_name += ".exe"
-    executable_path = os.path.join(build_dir, executable_name)
+        executable_names = [name + ".exe" for name in executable_names]
 
     # --- Clean Step ---
     if args.clean:
@@ -215,13 +224,22 @@ def main():
 
     # --- Run Step ---
     print("\n=== Running Application ===")
-    if os.path.exists(executable_path):
+    executable_path = next(
+        (
+            os.path.join(build_dir, executable_name)
+            for executable_name in executable_names
+            if os.path.exists(os.path.join(build_dir, executable_name))
+        ),
+        None,
+    )
+    if executable_path:
         try:
             subprocess.check_call([executable_path])
         except subprocess.CalledProcessError as e:
             sys.exit(e.returncode)
     else:
-        print(f"Error: Executable not found at {executable_path}")
+        expected_paths = ", ".join(os.path.join(build_dir, name) for name in executable_names)
+        print(f"Error: Executable not found. Checked: {expected_paths}")
         sys.exit(1)
 
     # --- Install Step ---

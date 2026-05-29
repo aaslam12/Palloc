@@ -1,0 +1,2623 @@
+=== mimalloc-bench results ===
+date: Tue May 26 10:28:27 PM MST 2026
+host: Linux 7.0.9-zen1-1-zen x86_64
+cpus: 12
+palloc dyn_slab shim: /home/al/Projects/Palloc/build/Release/libpalloc_shim.so
+palloc slab shim:     /home/al/Projects/Palloc/build/Release/libpalloc_slab_shim.so
+jemalloc: /usr/lib/libjemalloc.so
+
+
+--- cfrac [malloc] ---
+  [run 1]
+17545186520507317056371138836327483792789528 = 856070387728264 * 20495027946319472471219512627
+
+real	0m3.387s
+user	0m3.345s
+sys	0m0.010s
+  [run 2]
+17545186520507317056371138836327483792789528 = 856070387728264 * 20495027946319472471219512627
+
+real	0m3.260s
+user	0m3.250s
+sys	0m0.001s
+  [run 3]
+17545186520507317056371138836327483792789528 = 856070387728264 * 20495027946319472471219512627
+
+real	0m3.260s
+user	0m3.250s
+sys	0m0.002s
+
+--- cfrac [dyn_slab] ---
+  [run 1]
+17545186520507317056371138836327483792789528 = 856070387728264 * 20495027946319472471219512627
+
+real	0m3.687s
+user	0m3.676s
+sys	0m0.002s
+  [run 2]
+17545186520507317056371138836327483792789528 = 856070387728264 * 20495027946319472471219512627
+
+real	0m3.725s
+user	0m3.714s
+sys	0m0.001s
+  [run 3]
+17545186520507317056371138836327483792789528 = 856070387728264 * 20495027946319472471219512627
+
+real	0m3.704s
+user	0m3.693s
+sys	0m0.002s
+
+--- cfrac [slab] ---
+  [run 1]
+17545186520507317056371138836327483792789528 = 856070387728264 * 20495027946319472471219512627
+
+real	0m3.574s
+user	0m3.564s
+sys	0m0.001s
+  [run 2]
+17545186520507317056371138836327483792789528 = 856070387728264 * 20495027946319472471219512627
+
+real	0m3.561s
+user	0m3.549s
+sys	0m0.003s
+  [run 3]
+17545186520507317056371138836327483792789528 = 856070387728264 * 20495027946319472471219512627
+
+real	0m3.577s
+user	0m3.566s
+sys	0m0.002s
+
+--- cfrac [jemalloc] ---
+  [run 1]
+17545186520507317056371138836327483792789528 = 856070387728264 * 20495027946319472471219512627
+
+real	0m3.465s
+user	0m3.455s
+sys	0m0.001s
+  [run 2]
+17545186520507317056371138836327483792789528 = 856070387728264 * 20495027946319472471219512627
+
+real	0m3.454s
+user	0m3.425s
+sys	0m0.002s
+  [run 3]
+17545186520507317056371138836327483792789528 = 856070387728264 * 20495027946319472471219512627
+
+real	0m3.383s
+user	0m3.372s
+sys	0m0.002s
+
+--- espresso [malloc] ---
+  [run 1]
+
+real	0m3.915s
+user	0m3.896s
+sys	0m0.009s
+  [run 2]
+
+real	0m3.906s
+user	0m3.889s
+sys	0m0.008s
+  [run 3]
+
+real	0m3.910s
+user	0m3.893s
+sys	0m0.008s
+
+--- espresso [dyn_slab] ---
+  [run 1]
+
+real	0m3.989s
+user	0m3.968s
+sys	0m0.012s
+  [run 2]
+
+real	0m3.992s
+user	0m3.970s
+sys	0m0.013s
+  [run 3]
+
+real	0m4.091s
+user	0m4.065s
+sys	0m0.016s
+
+--- espresso [slab] ---
+  [run 1]
+
+real	0m4.131s
+user	0m4.114s
+sys	0m0.007s
+  [run 2]
+
+real	0m3.982s
+user	0m3.959s
+sys	0m0.014s
+  [run 3]
+
+real	0m3.995s
+user	0m3.975s
+sys	0m0.012s
+
+--- espresso [jemalloc] ---
+  [run 1]
+
+real	0m3.563s
+user	0m3.549s
+sys	0m0.006s
+  [run 2]
+
+real	0m3.559s
+user	0m3.542s
+sys	0m0.008s
+  [run 3]
+
+real	0m3.560s
+user	0m3.545s
+sys	0m0.007s
+
+--- barnes [malloc] ---
+  [run 1]
+Run this as
+  BARNES < input 
+ for default values
+
+		Hack code: Plummer model
+
+     nbody     dtime       eps       tol     dtout     tstop    fcells     NPROC
+    163840   0.02500    0.0500      1.00     0.250     0.075      2.00         1
+
+COMPUTESTART  =   1779859796
+COMPUTEEND    =   1779859798
+COMPUTETIME   =            2
+TRACKTIME     =            1
+PARTITIONTIME =            0	 0.00
+TREEBUILDTIME =            0	 0.00
+FORCECALCTIME =            1	 1.00
+RESTTIME      =            0	 0.00
+
+real	0m1.883s
+user	0m1.861s
+sys	0m0.016s
+  [run 2]
+Run this as
+  BARNES < input 
+ for default values
+
+		Hack code: Plummer model
+
+     nbody     dtime       eps       tol     dtout     tstop    fcells     NPROC
+    163840   0.02500    0.0500      1.00     0.250     0.075      2.00         1
+
+COMPUTESTART  =   1779859798
+COMPUTEEND    =   1779859800
+COMPUTETIME   =            2
+TRACKTIME     =            1
+PARTITIONTIME =            0	 0.00
+TREEBUILDTIME =            0	 0.00
+FORCECALCTIME =            1	 1.00
+RESTTIME      =            0	 0.00
+
+real	0m1.882s
+user	0m1.864s
+sys	0m0.013s
+  [run 3]
+Run this as
+  BARNES < input 
+ for default values
+
+		Hack code: Plummer model
+
+     nbody     dtime       eps       tol     dtout     tstop    fcells     NPROC
+    163840   0.02500    0.0500      1.00     0.250     0.075      2.00         1
+
+COMPUTESTART  =   1779859800
+COMPUTEEND    =   1779859802
+COMPUTETIME   =            2
+TRACKTIME     =            1
+PARTITIONTIME =            0	 0.00
+TREEBUILDTIME =            0	 0.00
+FORCECALCTIME =            1	 1.00
+RESTTIME      =            0	 0.00
+
+real	0m1.932s
+user	0m1.909s
+sys	0m0.017s
+
+--- barnes [dyn_slab] ---
+  [run 1]
+Run this as
+  BARNES < input 
+ for default values
+
+		Hack code: Plummer model
+
+     nbody     dtime       eps       tol     dtout     tstop    fcells     NPROC
+    163840   0.02500    0.0500      1.00     0.250     0.075      2.00         1
+
+COMPUTESTART  =   1779859802
+COMPUTEEND    =   1779859804
+COMPUTETIME   =            2
+TRACKTIME     =            1
+PARTITIONTIME =            0	 0.00
+TREEBUILDTIME =            0	 0.00
+FORCECALCTIME =            1	 1.00
+RESTTIME      =            0	 0.00
+
+real	0m1.882s
+user	0m1.863s
+sys	0m0.015s
+  [run 2]
+Run this as
+  BARNES < input 
+ for default values
+
+		Hack code: Plummer model
+
+     nbody     dtime       eps       tol     dtout     tstop    fcells     NPROC
+    163840   0.02500    0.0500      1.00     0.250     0.075      2.00         1
+
+COMPUTESTART  =   1779859804
+COMPUTEEND    =   1779859805
+COMPUTETIME   =            1
+TRACKTIME     =            0
+PARTITIONTIME =            0	 -nan
+TREEBUILDTIME =            0	 -nan
+FORCECALCTIME =            0	 -nan
+RESTTIME      =            0	 -nan
+
+real	0m1.895s
+user	0m1.874s
+sys	0m0.016s
+  [run 3]
+Run this as
+  BARNES < input 
+ for default values
+
+		Hack code: Plummer model
+
+     nbody     dtime       eps       tol     dtout     tstop    fcells     NPROC
+    163840   0.02500    0.0500      1.00     0.250     0.075      2.00         1
+
+COMPUTESTART  =   1779859806
+COMPUTEEND    =   1779859807
+COMPUTETIME   =            1
+TRACKTIME     =            1
+PARTITIONTIME =            0	 0.00
+TREEBUILDTIME =            1	 1.00
+FORCECALCTIME =            0	 0.00
+RESTTIME      =            0	 0.00
+
+real	0m1.982s
+user	0m1.959s
+sys	0m0.018s
+
+--- barnes [slab] ---
+  [run 1]
+Run this as
+  BARNES < input 
+ for default values
+
+		Hack code: Plummer model
+
+     nbody     dtime       eps       tol     dtout     tstop    fcells     NPROC
+    163840   0.02500    0.0500      1.00     0.250     0.075      2.00         1
+
+COMPUTESTART  =   1779859808
+COMPUTEEND    =   1779859809
+COMPUTETIME   =            1
+TRACKTIME     =            1
+PARTITIONTIME =            0	 0.00
+TREEBUILDTIME =            0	 0.00
+FORCECALCTIME =            1	 1.00
+RESTTIME      =            0	 0.00
+
+real	0m1.868s
+user	0m1.847s
+sys	0m0.015s
+  [run 2]
+Run this as
+  BARNES < input 
+ for default values
+
+		Hack code: Plummer model
+
+     nbody     dtime       eps       tol     dtout     tstop    fcells     NPROC
+    163840   0.02500    0.0500      1.00     0.250     0.075      2.00         1
+
+COMPUTESTART  =   1779859809
+COMPUTEEND    =   1779859811
+COMPUTETIME   =            2
+TRACKTIME     =            1
+PARTITIONTIME =            0	 0.00
+TREEBUILDTIME =            0	 0.00
+FORCECALCTIME =            1	 1.00
+RESTTIME      =            0	 0.00
+
+real	0m1.902s
+user	0m1.881s
+sys	0m0.015s
+  [run 3]
+Run this as
+  BARNES < input 
+ for default values
+
+		Hack code: Plummer model
+
+     nbody     dtime       eps       tol     dtout     tstop    fcells     NPROC
+    163840   0.02500    0.0500      1.00     0.250     0.075      2.00         1
+
+COMPUTESTART  =   1779859811
+COMPUTEEND    =   1779859813
+COMPUTETIME   =            2
+TRACKTIME     =            1
+PARTITIONTIME =            0	 0.00
+TREEBUILDTIME =            0	 0.00
+FORCECALCTIME =            1	 1.00
+RESTTIME      =            0	 0.00
+
+real	0m1.922s
+user	0m1.879s
+sys	0m0.019s
+
+--- barnes [jemalloc] ---
+  [run 1]
+Run this as
+  BARNES < input 
+ for default values
+
+		Hack code: Plummer model
+
+     nbody     dtime       eps       tol     dtout     tstop    fcells     NPROC
+    163840   0.02500    0.0500      1.00     0.250     0.075      2.00         1
+
+COMPUTESTART  =   1779859813
+COMPUTEEND    =   1779859815
+COMPUTETIME   =            2
+TRACKTIME     =            1
+PARTITIONTIME =            0	 0.00
+TREEBUILDTIME =            0	 0.00
+FORCECALCTIME =            1	 1.00
+RESTTIME      =            0	 0.00
+
+real	0m1.879s
+user	0m1.852s
+sys	0m0.022s
+  [run 2]
+Run this as
+  BARNES < input 
+ for default values
+
+		Hack code: Plummer model
+
+     nbody     dtime       eps       tol     dtout     tstop    fcells     NPROC
+    163840   0.02500    0.0500      1.00     0.250     0.075      2.00         1
+
+COMPUTESTART  =   1779859815
+COMPUTEEND    =   1779859817
+COMPUTETIME   =            2
+TRACKTIME     =            1
+PARTITIONTIME =            0	 0.00
+TREEBUILDTIME =            1	 1.00
+FORCECALCTIME =            0	 0.00
+RESTTIME      =            0	 0.00
+
+real	0m1.882s
+user	0m1.860s
+sys	0m0.017s
+  [run 3]
+Run this as
+  BARNES < input 
+ for default values
+
+		Hack code: Plummer model
+
+     nbody     dtime       eps       tol     dtout     tstop    fcells     NPROC
+    163840   0.02500    0.0500      1.00     0.250     0.075      2.00         1
+
+COMPUTESTART  =   1779859817
+COMPUTEEND    =   1779859819
+COMPUTETIME   =            2
+TRACKTIME     =            1
+PARTITIONTIME =            0	 0.00
+TREEBUILDTIME =            0	 0.00
+FORCECALCTIME =            1	 1.00
+RESTTIME      =            0	 0.00
+
+real	0m1.874s
+user	0m1.844s
+sys	0m0.026s
+
+--- larson [malloc] ---
+  [run 1]
+Throughput = 241051684 operations per second, relative time: 4.148s.
+Done sleeping...
+
+real	0m7.034s
+user	0m56.774s
+sys	0m0.379s
+  [run 2]
+Throughput = 237715671 operations per second, relative time: 4.207s.
+Done sleeping...
+
+real	0m7.030s
+user	0m56.493s
+sys	0m0.372s
+  [run 3]
+Throughput = 237070661 operations per second, relative time: 4.218s.
+Done sleeping...
+
+real	0m7.029s
+user	0m56.734s
+sys	0m0.358s
+
+--- larson [dyn_slab] ---
+  [run 1]
+Throughput = 199359611 operations per second, relative time: 5.016s.
+Done sleeping...
+
+real	0m7.032s
+user	0m56.742s
+sys	0m0.355s
+  [run 2]
+Throughput = 199683753 operations per second, relative time: 5.008s.
+Done sleeping...
+
+real	0m7.032s
+user	0m56.769s
+sys	0m0.333s
+  [run 3]
+Throughput = 193090494 operations per second, relative time: 5.179s.
+Done sleeping...
+
+real	0m7.032s
+user	0m56.715s
+sys	0m0.381s
+
+--- larson [slab] ---
+  [run 1]
+Throughput = 193591866 operations per second, relative time: 5.166s.
+Done sleeping...
+
+real	0m7.035s
+user	0m56.097s
+sys	0m0.378s
+  [run 2]
+Throughput = 191558132 operations per second, relative time: 5.220s.
+Done sleeping...
+
+real	0m7.034s
+user	0m55.529s
+sys	0m0.368s
+  [run 3]
+Throughput = 190713632 operations per second, relative time: 5.243s.
+Done sleeping...
+
+real	0m7.035s
+user	0m56.045s
+sys	0m0.363s
+
+--- larson [jemalloc] ---
+  [run 1]
+Throughput = 254513104 operations per second, relative time: 3.929s.
+Done sleeping...
+
+real	0m7.016s
+user	0m56.477s
+sys	0m0.355s
+  [run 2]
+Throughput = 246427718 operations per second, relative time: 4.058s.
+Done sleeping...
+
+real	0m7.018s
+user	0m56.605s
+sys	0m0.334s
+  [run 3]
+Throughput = 241048909 operations per second, relative time: 4.149s.
+Done sleeping...
+
+real	0m7.015s
+user	0m56.506s
+sys	0m0.393s
+
+--- larson-sized [malloc] ---
+  [run 1]
+Throughput = 215568421 operations per second, relative time: 4.639s.
+Done sleeping...
+
+real	0m7.028s
+user	0m55.843s
+sys	0m0.384s
+  [run 2]
+Throughput = 229267745 operations per second, relative time: 4.362s.
+Done sleeping...
+
+real	0m7.027s
+user	0m56.686s
+sys	0m0.351s
+  [run 3]
+Throughput = 216860318 operations per second, relative time: 4.611s.
+Done sleeping...
+
+real	0m7.030s
+user	0m56.772s
+sys	0m0.339s
+
+--- larson-sized [dyn_slab] ---
+  [run 1]
+Throughput = 182225542 operations per second, relative time: 5.488s.
+Done sleeping...
+
+real	0m7.032s
+user	0m55.881s
+sys	0m0.349s
+  [run 2]
+Throughput = 185676447 operations per second, relative time: 5.386s.
+Done sleeping...
+
+real	0m7.031s
+user	0m56.397s
+sys	0m0.325s
+  [run 3]
+Throughput = 173257567 operations per second, relative time: 5.772s.
+Done sleeping...
+
+real	0m7.034s
+user	0m54.362s
+sys	0m0.377s
+
+--- larson-sized [slab] ---
+  [run 1]
+Throughput = 177355768 operations per second, relative time: 5.638s.
+Done sleeping...
+
+real	0m7.035s
+user	0m55.171s
+sys	0m0.434s
+  [run 2]
+Throughput = 191425638 operations per second, relative time: 5.224s.
+Done sleeping...
+
+real	0m7.033s
+user	0m56.669s
+sys	0m0.369s
+  [run 3]
+Throughput = 185898052 operations per second, relative time: 5.379s.
+Done sleeping...
+
+real	0m7.035s
+user	0m55.762s
+sys	0m0.389s
+
+--- larson-sized [jemalloc] ---
+  [run 1]
+Throughput = 257163969 operations per second, relative time: 3.889s.
+Done sleeping...
+
+real	0m7.015s
+user	0m56.327s
+sys	0m0.363s
+  [run 2]
+Throughput = 252973612 operations per second, relative time: 3.953s.
+Done sleeping...
+
+real	0m7.014s
+user	0m56.632s
+sys	0m0.389s
+  [run 3]
+Throughput = 253108556 operations per second, relative time: 3.951s.
+Done sleeping...
+
+real	0m7.015s
+user	0m56.544s
+sys	0m0.382s
+
+--- alloc-test1 [malloc] ---
+  [run 1]
+threads: 1
+about to run thread 0...
+    ...done
+joining thread 0...
+    running thread 0 with 'new-delete allocator' and maxItemSizeExp = 10, maxItems = 262144, iterCount = 100000000, allocated memory access mode: full,  [rnd_seed = 41] ...
+about to exit thread 0 (100000000 operations performed) [ctr = 5859554003585743717]...
+    ...done
+1 threads made 100000000 alloc/dealloc operations in 3212 ms (32 ms per 1 million)
+
+real	0m3.213s
+user	0m3.187s
+sys	0m0.008s
+  [run 2]
+threads: 1
+about to run thread 0...
+    ...done
+joining thread 0...
+    running thread 0 with 'new-delete allocator' and maxItemSizeExp = 10, maxItems = 262144, iterCount = 100000000, allocated memory access mode: full,  [rnd_seed = 41] ...
+about to exit thread 0 (100000000 operations performed) [ctr = 5859554003585743717]...
+    ...done
+1 threads made 100000000 alloc/dealloc operations in 3261 ms (32 ms per 1 million)
+
+real	0m3.262s
+user	0m3.245s
+sys	0m0.006s
+  [run 3]
+threads: 1
+about to run thread 0...
+    ...done
+joining thread 0...
+    running thread 0 with 'new-delete allocator' and maxItemSizeExp = 10, maxItems = 262144, iterCount = 100000000, allocated memory access mode: full,  [rnd_seed = 41] ...
+about to exit thread 0 (100000000 operations performed) [ctr = 5859554003585743717]...
+    ...done
+1 threads made 100000000 alloc/dealloc operations in 3332 ms (33 ms per 1 million)
+
+real	0m3.333s
+user	0m3.289s
+sys	0m0.011s
+
+--- alloc-test1 [dyn_slab] ---
+  [run 1]
+threads: 1
+about to run thread 0...
+    ...done
+joining thread 0...
+    running thread 0 with 'new-delete allocator' and maxItemSizeExp = 10, maxItems = 262144, iterCount = 100000000, allocated memory access mode: full,  [rnd_seed = 41] ...
+about to exit thread 0 (100000000 operations performed) [ctr = 5859554003585743717]...
+    ...done
+1 threads made 100000000 alloc/dealloc operations in 3389 ms (33 ms per 1 million)
+
+real	0m3.390s
+user	0m3.376s
+sys	0m0.005s
+  [run 2]
+threads: 1
+about to run thread 0...
+    ...done
+joining thread 0...
+    running thread 0 with 'new-delete allocator' and maxItemSizeExp = 10, maxItems = 262144, iterCount = 100000000, allocated memory access mode: full,  [rnd_seed = 41] ...
+about to exit thread 0 (100000000 operations performed) [ctr = 5859554003585743717]...
+    ...done
+1 threads made 100000000 alloc/dealloc operations in 3393 ms (33 ms per 1 million)
+
+real	0m3.394s
+user	0m3.380s
+sys	0m0.003s
+  [run 3]
+threads: 1
+about to run thread 0...
+    ...done
+joining thread 0...
+    running thread 0 with 'new-delete allocator' and maxItemSizeExp = 10, maxItems = 262144, iterCount = 100000000, allocated memory access mode: full,  [rnd_seed = 41] ...
+about to exit thread 0 (100000000 operations performed) [ctr = 5859554003585743717]...
+    ...done
+1 threads made 100000000 alloc/dealloc operations in 3439 ms (34 ms per 1 million)
+
+real	0m3.440s
+user	0m3.376s
+sys	0m0.023s
+
+--- alloc-test1 [slab] ---
+  [run 1]
+threads: 1
+about to run thread 0...
+    ...done
+joining thread 0...
+    running thread 0 with 'new-delete allocator' and maxItemSizeExp = 10, maxItems = 262144, iterCount = 100000000, allocated memory access mode: full,  [rnd_seed = 41] ...
+about to exit thread 0 (100000000 operations performed) [ctr = 5859554003585743717]...
+    ...done
+1 threads made 100000000 alloc/dealloc operations in 3146 ms (31 ms per 1 million)
+
+real	0m3.147s
+user	0m3.133s
+sys	0m0.004s
+  [run 2]
+threads: 1
+about to run thread 0...
+    ...done
+joining thread 0...
+    running thread 0 with 'new-delete allocator' and maxItemSizeExp = 10, maxItems = 262144, iterCount = 100000000, allocated memory access mode: full,  [rnd_seed = 41] ...
+about to exit thread 0 (100000000 operations performed) [ctr = 5859554003585743717]...
+    ...done
+1 threads made 100000000 alloc/dealloc operations in 3228 ms (32 ms per 1 million)
+
+real	0m3.229s
+user	0m3.177s
+sys	0m0.015s
+  [run 3]
+threads: 1
+about to run thread 0...
+    ...done
+joining thread 0...
+    running thread 0 with 'new-delete allocator' and maxItemSizeExp = 10, maxItems = 262144, iterCount = 100000000, allocated memory access mode: full,  [rnd_seed = 41] ...
+about to exit thread 0 (100000000 operations performed) [ctr = 5859554003585743717]...
+    ...done
+1 threads made 100000000 alloc/dealloc operations in 3125 ms (31 ms per 1 million)
+
+real	0m3.126s
+user	0m3.113s
+sys	0m0.004s
+
+--- alloc-test1 [jemalloc] ---
+  [run 1]
+threads: 1
+about to run thread 0...
+    ...done
+joining thread 0...
+    running thread 0 with 'new-delete allocator' and maxItemSizeExp = 10, maxItems = 262144, iterCount = 100000000, allocated memory access mode: full,  [rnd_seed = 41] ...
+about to exit thread 0 (100000000 operations performed) [ctr = 5859554003585743717]...
+    ...done
+1 threads made 100000000 alloc/dealloc operations in 2673 ms (26 ms per 1 million)
+
+real	0m2.674s
+user	0m2.664s
+sys	0m0.003s
+  [run 2]
+threads: 1
+about to run thread 0...
+    ...done
+joining thread 0...
+    running thread 0 with 'new-delete allocator' and maxItemSizeExp = 10, maxItems = 262144, iterCount = 100000000, allocated memory access mode: full,  [rnd_seed = 41] ...
+about to exit thread 0 (100000000 operations performed) [ctr = 5859554003585743717]...
+    ...done
+1 threads made 100000000 alloc/dealloc operations in 2678 ms (26 ms per 1 million)
+
+real	0m2.679s
+user	0m2.668s
+sys	0m0.004s
+  [run 3]
+threads: 1
+about to run thread 0...
+    ...done
+joining thread 0...
+    running thread 0 with 'new-delete allocator' and maxItemSizeExp = 10, maxItems = 262144, iterCount = 100000000, allocated memory access mode: full,  [rnd_seed = 41] ...
+about to exit thread 0 (100000000 operations performed) [ctr = 5859554003585743717]...
+    ...done
+1 threads made 100000000 alloc/dealloc operations in 2687 ms (26 ms per 1 million)
+
+real	0m2.688s
+user	0m2.672s
+sys	0m0.008s
+
+--- alloc-testN [malloc] ---
+  [run 1]
+threads: 12
+about to run thread 0...
+    ...done
+about to run thread 1...
+    running thread 0 with 'new-delete allocator' and maxItemSizeExp = 10, maxItems = 21845, iterCount = 100000000, allocated memory access mode: full,  [rnd_seed = 41] ...
+    ...done
+about to run thread 2...
+    running thread 1 with 'new-delete allocator' and maxItemSizeExp = 10, maxItems = 21845, iterCount = 100000000, allocated memory access mode: full,  [rnd_seed = 41] ...
+    ...done
+about to run thread 3...
+    running thread 2 with 'new-delete allocator' and maxItemSizeExp = 10, maxItems = 21845, iterCount = 100000000, allocated memory access mode: full,  [rnd_seed = 41] ...
+    ...done
+about to run thread 4...
+    running thread 3 with 'new-delete allocator' and maxItemSizeExp = 10, maxItems = 21845, iterCount = 100000000, allocated memory access mode: full,  [rnd_seed = 41] ...
+    ...done
+about to run thread 5...
+    running thread 4 with 'new-delete allocator' and maxItemSizeExp = 10, maxItems = 21845, iterCount = 100000000, allocated memory access mode: full,  [rnd_seed = 41] ...
+    ...done
+about to run thread 6...
+    running thread 5 with 'new-delete allocator' and maxItemSizeExp = 10, maxItems = 21845, iterCount = 100000000, allocated memory access mode: full,  [rnd_seed = 41] ...
+    ...done
+about to run thread 7...
+    running thread 6 with 'new-delete allocator' and maxItemSizeExp = 10, maxItems = 21845, iterCount = 100000000, allocated memory access mode: full,  [rnd_seed = 41] ...
+    ...done
+about to run thread 8...
+    running thread 7 with 'new-delete allocator' and maxItemSizeExp = 10, maxItems = 21845, iterCount = 100000000, allocated memory access mode: full,  [rnd_seed = 41] ...
+    ...done
+about to run thread 9...
+    running thread 8 with 'new-delete allocator' and maxItemSizeExp = 10, maxItems = 21845, iterCount = 100000000, allocated memory access mode: full,  [rnd_seed = 41] ...
+    ...done
+about to run thread 10...
+    running thread 9 with 'new-delete allocator' and maxItemSizeExp = 10, maxItems = 21845, iterCount = 100000000, allocated memory access mode: full,  [rnd_seed = 41] ...
+    ...done
+about to run thread 11...
+    running thread 10 with 'new-delete allocator' and maxItemSizeExp = 10, maxItems = 21845, iterCount = 100000000, allocated memory access mode: full,  [rnd_seed = 41] ...
+    ...done
+joining thread 0...
+    running thread 11 with 'new-delete allocator' and maxItemSizeExp = 10, maxItems = 21845, iterCount = 100000000, allocated memory access mode: full,  [rnd_seed = 41] ...
+about to exit thread 3 (100000000 operations performed) [ctr = -4051049675239571671]...
+about to exit thread 9 (100000000 operations performed) [ctr = -4051049675239571671]...
+about to exit thread 10 (100000000 operations performed) [ctr = -4051049675239571671]...
+about to exit thread 6 (100000000 operations performed) [ctr = -4051049675239571671]...
+about to exit thread 2 (100000000 operations performed) [ctr = -4051049675239571671]...
+about to exit thread 4 (100000000 operations performed) [ctr = -4051049675239571671]...
+about to exit thread 1 (100000000 operations performed) [ctr = -4051049675239571671]...
+about to exit thread 7 (100000000 operations performed) [ctr = -4051049675239571671]...
+about to exit thread 0 (100000000 operations performed) [ctr = -4051049675239571671]...
+    ...done
+joining thread 1...
+    ...done
+joining thread 2...
+    ...done
+joining thread 3...
+    ...done
+joining thread 4...
+    ...done
+joining thread 5...
+about to exit thread 8 (100000000 operations performed) [ctr = -4051049675239571671]...
+about to exit thread 5 (100000000 operations performed) [ctr = -4051049675239571671]...
+    ...done
+joining thread 6...
+    ...done
+joining thread 7...
+    ...done
+joining thread 8...
+    ...done
+joining thread 9...
+    ...done
+joining thread 10...
+    ...done
+joining thread 11...
+about to exit thread 11 (100000000 operations performed) [ctr = -4051049675239571671]...
+    ...done
+12 threads made 1200000000 alloc/dealloc operations in 4538 ms (3 ms per 1 million)
+
+real	0m4.540s
+user	0m50.670s
+sys	0m0.118s
+  [run 2]
+threads: 12
+about to run thread 0...
+    ...done
+about to run thread 1...
+    running thread 0 with 'new-delete allocator' and maxItemSizeExp = 10, maxItems = 21845, iterCount = 100000000, allocated memory access mode: full,  [rnd_seed = 41] ...
+    ...done
+about to run thread 2...
+    running thread 1 with 'new-delete allocator' and maxItemSizeExp = 10, maxItems = 21845, iterCount = 100000000, allocated memory access mode: full,  [rnd_seed = 41] ...
+    ...done
+about to run thread 3...
+    ...done
+about to run thread 4...
+    running thread 2 with 'new-delete allocator' and maxItemSizeExp = 10, maxItems = 21845, iterCount = 100000000, allocated memory access mode: full,  [rnd_seed = 41] ...
+    running thread 3 with 'new-delete allocator' and maxItemSizeExp = 10, maxItems = 21845, iterCount = 100000000, allocated memory access mode: full,  [rnd_seed = 41] ...
+    ...done
+about to run thread 5...
+    running thread 4 with 'new-delete allocator' and maxItemSizeExp = 10, maxItems = 21845, iterCount = 100000000, allocated memory access mode: full,  [rnd_seed = 41] ...
+    ...done
+about to run thread 6...
+    running thread 5 with 'new-delete allocator' and maxItemSizeExp = 10, maxItems = 21845, iterCount = 100000000, allocated memory access mode: full,  [rnd_seed = 41] ...
+    ...done
+about to run thread 7...
+    running thread 6 with 'new-delete allocator' and maxItemSizeExp = 10, maxItems = 21845, iterCount = 100000000, allocated memory access mode: full,  [rnd_seed = 41] ...
+    ...done
+about to run thread 8...
+    running thread 7 with 'new-delete allocator' and maxItemSizeExp = 10, maxItems = 21845, iterCount = 100000000, allocated memory access mode: full,  [rnd_seed = 41] ...
+    ...done
+about to run thread 9...
+    running thread 8 with 'new-delete allocator' and maxItemSizeExp = 10, maxItems = 21845, iterCount = 100000000, allocated memory access mode: full,  [rnd_seed = 41] ...
+    ...done
+about to run thread 10...
+    running thread 9 with 'new-delete allocator' and maxItemSizeExp = 10, maxItems = 21845, iterCount = 100000000, allocated memory access mode: full,  [rnd_seed = 41] ...
+    ...done
+about to run thread 11...
+    running thread 10 with 'new-delete allocator' and maxItemSizeExp = 10, maxItems = 21845, iterCount = 100000000, allocated memory access mode: full,  [rnd_seed = 41] ...
+    ...done
+joining thread 0...
+    running thread 11 with 'new-delete allocator' and maxItemSizeExp = 10, maxItems = 21845, iterCount = 100000000, allocated memory access mode: full,  [rnd_seed = 41] ...
+about to exit thread 7 (100000000 operations performed) [ctr = -4051049675239571671]...
+about to exit thread 0 (100000000 operations performed) [ctr = -4051049675239571671]...
+    ...done
+joining thread 1...
+about to exit thread 5 (100000000 operations performed) [ctr = -4051049675239571671]...
+about to exit thread 2 (100000000 operations performed) [ctr = -4051049675239571671]...
+about to exit thread 3 (100000000 operations performed) [ctr = -4051049675239571671]...
+about to exit thread 4 (100000000 operations performed) [ctr = -4051049675239571671]...
+about to exit thread 10 (100000000 operations performed) [ctr = -4051049675239571671]...
+about to exit thread 8 (100000000 operations performed) [ctr = -4051049675239571671]...
+about to exit thread 6 (100000000 operations performed) [ctr = -4051049675239571671]...
+about to exit thread 1 (100000000 operations performed) [ctr = -4051049675239571671]...
+    ...done
+joining thread 2...
+    ...done
+joining thread 3...
+    ...done
+joining thread 4...
+    ...done
+joining thread 5...
+    ...done
+joining thread 6...
+    ...done
+joining thread 7...
+    ...done
+joining thread 8...
+    ...done
+joining thread 9...
+about to exit thread 9 (100000000 operations performed) [ctr = -4051049675239571671]...
+    ...done
+joining thread 10...
+    ...done
+joining thread 11...
+about to exit thread 11 (100000000 operations performed) [ctr = -4051049675239571671]...
+    ...done
+12 threads made 1200000000 alloc/dealloc operations in 4685 ms (3 ms per 1 million)
+
+real	0m4.686s
+user	0m51.827s
+sys	0m0.148s
+  [run 3]
+threads: 12
+about to run thread 0...
+    ...done
+about to run thread 1...
+    ...done
+about to run thread 2...
+    running thread 0 with 'new-delete allocator' and maxItemSizeExp = 10, maxItems = 21845, iterCount = 100000000, allocated memory access mode: full,  [rnd_seed = 41] ...
+    running thread 1 with 'new-delete allocator' and maxItemSizeExp = 10, maxItems = 21845, iterCount = 100000000, allocated memory access mode: full,  [rnd_seed = 41] ...
+    ...done
+about to run thread 3...
+    ...done
+about to run thread 4...
+    running thread 3 with 'new-delete allocator' and maxItemSizeExp = 10, maxItems = 21845, iterCount = 100000000, allocated memory access mode: full,  [rnd_seed = 41] ...
+    ...done
+about to run thread 5...
+    running thread 4 with 'new-delete allocator' and maxItemSizeExp = 10, maxItems = 21845, iterCount = 100000000, allocated memory access mode: full,  [rnd_seed = 41] ...
+    ...done
+about to run thread 6...
+    running thread 5 with 'new-delete allocator' and maxItemSizeExp = 10, maxItems = 21845, iterCount = 100000000, allocated memory access mode: full,  [rnd_seed = 41] ...
+    running thread 2 with 'new-delete allocator' and maxItemSizeExp = 10, maxItems = 21845, iterCount = 100000000, allocated memory access mode: full,  [rnd_seed = 41] ...
+    ...done
+about to run thread 7...
+    running thread 6 with 'new-delete allocator' and maxItemSizeExp = 10, maxItems = 21845, iterCount = 100000000, allocated memory access mode: full,  [rnd_seed = 41] ...
+    ...done
+about to run thread 8...
+    running thread 7 with 'new-delete allocator' and maxItemSizeExp = 10, maxItems = 21845, iterCount = 100000000, allocated memory access mode: full,  [rnd_seed = 41] ...
+    ...done
+about to run thread 9...
+    running thread 8 with 'new-delete allocator' and maxItemSizeExp = 10, maxItems = 21845, iterCount = 100000000, allocated memory access mode: full,  [rnd_seed = 41] ...
+    ...done
+about to run thread 10...
+    running thread 9 with 'new-delete allocator' and maxItemSizeExp = 10, maxItems = 21845, iterCount = 100000000, allocated memory access mode: full,  [rnd_seed = 41] ...
+    ...done
+about to run thread 11...
+    running thread 10 with 'new-delete allocator' and maxItemSizeExp = 10, maxItems = 21845, iterCount = 100000000, allocated memory access mode: full,  [rnd_seed = 41] ...
+    ...done
+joining thread 0...
+    running thread 11 with 'new-delete allocator' and maxItemSizeExp = 10, maxItems = 21845, iterCount = 100000000, allocated memory access mode: full,  [rnd_seed = 41] ...
+about to exit thread 1 (100000000 operations performed) [ctr = -4051049675239571671]...
+about to exit thread 4 (100000000 operations performed) [ctr = -4051049675239571671]...
+about to exit thread 7 (100000000 operations performed) [ctr = -4051049675239571671]...
+about to exit thread 9 (100000000 operations performed) [ctr = -4051049675239571671]...
+about to exit thread 11 (100000000 operations performed) [ctr = -4051049675239571671]...
+about to exit thread 5 (100000000 operations performed) [ctr = -4051049675239571671]...
+about to exit thread 8 (100000000 operations performed) [ctr = -4051049675239571671]...
+about to exit thread 3 (100000000 operations performed) [ctr = -4051049675239571671]...
+about to exit thread 2 (100000000 operations performed) [ctr = -4051049675239571671]...
+about to exit thread 6 (100000000 operations performed) [ctr = -4051049675239571671]...
+about to exit thread 0 (100000000 operations performed) [ctr = -4051049675239571671]...
+    ...done
+joining thread 1...
+    ...done
+joining thread 2...
+    ...done
+joining thread 3...
+    ...done
+joining thread 4...
+    ...done
+joining thread 5...
+    ...done
+joining thread 6...
+    ...done
+joining thread 7...
+    ...done
+joining thread 8...
+    ...done
+joining thread 9...
+    ...done
+joining thread 10...
+about to exit thread 10 (100000000 operations performed) [ctr = -4051049675239571671]...
+    ...done
+joining thread 11...
+    ...done
+12 threads made 1200000000 alloc/dealloc operations in 4794 ms (3 ms per 1 million)
+
+real	0m4.796s
+user	0m52.036s
+sys	0m0.138s
+
+--- alloc-testN [dyn_slab] ---
+  [run 1]
+threads: 12
+about to run thread 0...
+    ...done
+about to run thread 1...
+    running thread 0 with 'new-delete allocator' and maxItemSizeExp = 10, maxItems = 21845, iterCount = 100000000, allocated memory access mode: full,  [rnd_seed = 41] ...
+    ...done
+about to run thread 2...
+    running thread 1 with 'new-delete allocator' and maxItemSizeExp = 10, maxItems = 21845, iterCount = 100000000, allocated memory access mode: full,  [rnd_seed = 41] ...
+    ...done
+about to run thread 3...
+    running thread 2 with 'new-delete allocator' and maxItemSizeExp = 10, maxItems = 21845, iterCount = 100000000, allocated memory access mode: full,  [rnd_seed = 41] ...
+    ...done
+about to run thread 4...
+    running thread 3 with 'new-delete allocator' and maxItemSizeExp = 10, maxItems = 21845, iterCount = 100000000, allocated memory access mode: full,  [rnd_seed = 41] ...
+    ...done
+about to run thread 5...
+    ...done
+about to run thread 6...
+    running thread 4 with 'new-delete allocator' and maxItemSizeExp = 10, maxItems = 21845, iterCount = 100000000, allocated memory access mode: full,  [rnd_seed = 41] ...
+    running thread 5 with 'new-delete allocator' and maxItemSizeExp = 10, maxItems = 21845, iterCount = 100000000, allocated memory access mode: full,  [rnd_seed = 41] ...
+    ...done
+about to run thread 7...
+    running thread 6 with 'new-delete allocator' and maxItemSizeExp = 10, maxItems = 21845, iterCount = 100000000, allocated memory access mode: full,  [rnd_seed = 41] ...
+    ...done
+about to run thread 8...
+    running thread 7 with 'new-delete allocator' and maxItemSizeExp = 10, maxItems = 21845, iterCount = 100000000, allocated memory access mode: full,  [rnd_seed = 41] ...
+    ...done
+about to run thread 9...
+    running thread 8 with 'new-delete allocator' and maxItemSizeExp = 10, maxItems = 21845, iterCount = 100000000, allocated memory access mode: full,  [rnd_seed = 41] ...
+    ...done
+about to run thread 10...
+    running thread 9 with 'new-delete allocator' and maxItemSizeExp = 10, maxItems = 21845, iterCount = 100000000, allocated memory access mode: full,  [rnd_seed = 41] ...
+    ...done
+about to run thread 11...
+    running thread 10 with 'new-delete allocator' and maxItemSizeExp = 10, maxItems = 21845, iterCount = 100000000, allocated memory access mode: full,  [rnd_seed = 41] ...
+    ...done
+joining thread 0...
+    running thread 11 with 'new-delete allocator' and maxItemSizeExp = 10, maxItems = 21845, iterCount = 100000000, allocated memory access mode: full,  [rnd_seed = 41] ...
+about to exit thread 2 (100000000 operations performed) [ctr = -4051049675239571671]...
+about to exit thread 1 (100000000 operations performed) [ctr = -4051049675239571671]...
+about to exit thread 9 (100000000 operations performed) [ctr = -4051049675239571671]...
+about to exit thread 7 (100000000 operations performed) [ctr = -4051049675239571671]...
+about to exit thread 10 (100000000 operations performed) [ctr = -4051049675239571671]...
+about to exit thread 5 (100000000 operations performed) [ctr = -4051049675239571671]...
+about to exit thread 6 (100000000 operations performed) [ctr = -4051049675239571671]...
+about to exit thread 3 (100000000 operations performed) [ctr = -4051049675239571671]...
+about to exit thread 11 (100000000 operations performed) [ctr = -4051049675239571671]...
+about to exit thread 4 (100000000 operations performed) [ctr = -4051049675239571671]...
+about to exit thread 8 (100000000 operations performed) [ctr = -4051049675239571671]...
+about to exit thread 0 (100000000 operations performed) [ctr = -4051049675239571671]...
+    ...done
+joining thread 1...
+    ...done
+joining thread 2...
+    ...done
+joining thread 3...
+    ...done
+joining thread 4...
+    ...done
+joining thread 5...
+    ...done
+joining thread 6...
+    ...done
+joining thread 7...
+    ...done
+joining thread 8...
+    ...done
+joining thread 9...
+    ...done
+joining thread 10...
+    ...done
+joining thread 11...
+    ...done
+12 threads made 1200000000 alloc/dealloc operations in 5185 ms (4 ms per 1 million)
+
+real	0m5.187s
+user	0m58.128s
+sys	0m0.158s
+  [run 2]
+threads: 12
+about to run thread 0...
+    ...done
+about to run thread 1...
+    running thread 0 with 'new-delete allocator' and maxItemSizeExp = 10, maxItems = 21845, iterCount = 100000000, allocated memory access mode: full,  [rnd_seed = 41] ...
+    ...done
+about to run thread 2...
+    running thread 1 with 'new-delete allocator' and maxItemSizeExp = 10, maxItems = 21845, iterCount = 100000000, allocated memory access mode: full,  [rnd_seed = 41] ...
+    ...done
+about to run thread 3...
+    running thread 2 with 'new-delete allocator' and maxItemSizeExp = 10, maxItems = 21845, iterCount = 100000000, allocated memory access mode: full,  [rnd_seed = 41] ...
+    ...done
+about to run thread 4...
+    ...done
+about to run thread 5...
+    running thread 3 with 'new-delete allocator' and maxItemSizeExp = 10, maxItems = 21845, iterCount = 100000000, allocated memory access mode: full,  [rnd_seed = 41] ...
+    running thread 4 with 'new-delete allocator' and maxItemSizeExp = 10, maxItems = 21845, iterCount = 100000000, allocated memory access mode: full,  [rnd_seed = 41] ...
+    ...done
+about to run thread 6...
+    running thread 5 with 'new-delete allocator' and maxItemSizeExp = 10, maxItems = 21845, iterCount = 100000000, allocated memory access mode: full,  [rnd_seed = 41] ...
+    ...done
+about to run thread 7...
+    running thread 6 with 'new-delete allocator' and maxItemSizeExp = 10, maxItems = 21845, iterCount = 100000000, allocated memory access mode: full,  [rnd_seed = 41] ...
+    ...done
+about to run thread 8...
+    running thread 7 with 'new-delete allocator' and maxItemSizeExp = 10, maxItems = 21845, iterCount = 100000000, allocated memory access mode: full,  [rnd_seed = 41] ...
+    ...done
+about to run thread 9...
+    running thread 8 with 'new-delete allocator' and maxItemSizeExp = 10, maxItems = 21845, iterCount = 100000000, allocated memory access mode: full,  [rnd_seed = 41] ...
+    ...done
+about to run thread 10...
+    running thread 9 with 'new-delete allocator' and maxItemSizeExp = 10, maxItems = 21845, iterCount = 100000000, allocated memory access mode: full,  [rnd_seed = 41] ...
+    ...done
+about to run thread 11...
+    ...done
+joining thread 0...
+    running thread 10 with 'new-delete allocator' and maxItemSizeExp = 10, maxItems = 21845, iterCount = 100000000, allocated memory access mode: full,  [rnd_seed = 41] ...
+    running thread 11 with 'new-delete allocator' and maxItemSizeExp = 10, maxItems = 21845, iterCount = 100000000, allocated memory access mode: full,  [rnd_seed = 41] ...
+about to exit thread 0 (100000000 operations performed) [ctr = -4051049675239571671]...
+    ...done
+joining thread 1...
+about to exit thread 8 (100000000 operations performed) [ctr = -4051049675239571671]...
+about to exit thread 6 (100000000 operations performed) [ctr = -4051049675239571671]...
+about to exit thread 9 (100000000 operations performed) [ctr = -4051049675239571671]...
+about to exit thread 7 (100000000 operations performed) [ctr = -4051049675239571671]...
+about to exit thread 1 (100000000 operations performed) [ctr = -4051049675239571671]...
+    ...done
+joining thread 2...
+about to exit thread 4 (100000000 operations performed) [ctr = -4051049675239571671]...
+about to exit thread 11 (100000000 operations performed) [ctr = -4051049675239571671]...
+about to exit thread 2 (100000000 operations performed) [ctr = -4051049675239571671]...
+    ...done
+joining thread 3...
+about to exit thread 5 (100000000 operations performed) [ctr = -4051049675239571671]...
+about to exit thread 10 (100000000 operations performed) [ctr = -4051049675239571671]...
+about to exit thread 3 (100000000 operations performed) [ctr = -4051049675239571671]...
+    ...done
+joining thread 4...
+    ...done
+joining thread 5...
+    ...done
+joining thread 6...
+    ...done
+joining thread 7...
+    ...done
+joining thread 8...
+    ...done
+joining thread 9...
+    ...done
+joining thread 10...
+    ...done
+joining thread 11...
+    ...done
+12 threads made 1200000000 alloc/dealloc operations in 5299 ms (4 ms per 1 million)
+
+real	0m5.300s
+user	0m58.283s
+sys	0m0.149s
+  [run 3]
+threads: 12
+about to run thread 0...
+    ...done
+about to run thread 1...
+    ...done
+about to run thread 2...
+    running thread 0 with 'new-delete allocator' and maxItemSizeExp = 10, maxItems = 21845, iterCount = 100000000, allocated memory access mode: full,  [rnd_seed = 41] ...
+    running thread 1 with 'new-delete allocator' and maxItemSizeExp = 10, maxItems = 21845, iterCount = 100000000, allocated memory access mode: full,  [rnd_seed = 41] ...
+    ...done
+about to run thread 3...
+    running thread 2 with 'new-delete allocator' and maxItemSizeExp = 10, maxItems = 21845, iterCount = 100000000, allocated memory access mode: full,  [rnd_seed = 41] ...
+    ...done
+about to run thread 4...
+    running thread 3 with 'new-delete allocator' and maxItemSizeExp = 10, maxItems = 21845, iterCount = 100000000, allocated memory access mode: full,  [rnd_seed = 41] ...
+    ...done
+about to run thread 5...
+    running thread 4 with 'new-delete allocator' and maxItemSizeExp = 10, maxItems = 21845, iterCount = 100000000, allocated memory access mode: full,  [rnd_seed = 41] ...
+    ...done
+about to run thread 6...
+    running thread 5 with 'new-delete allocator' and maxItemSizeExp = 10, maxItems = 21845, iterCount = 100000000, allocated memory access mode: full,  [rnd_seed = 41] ...
+    ...done
+about to run thread 7...
+    running thread 6 with 'new-delete allocator' and maxItemSizeExp = 10, maxItems = 21845, iterCount = 100000000, allocated memory access mode: full,  [rnd_seed = 41] ...
+    ...done
+about to run thread 8...
+    running thread 7 with 'new-delete allocator' and maxItemSizeExp = 10, maxItems = 21845, iterCount = 100000000, allocated memory access mode: full,  [rnd_seed = 41] ...
+    ...done
+about to run thread 9...
+    running thread 8 with 'new-delete allocator' and maxItemSizeExp = 10, maxItems = 21845, iterCount = 100000000, allocated memory access mode: full,  [rnd_seed = 41] ...
+    ...done
+about to run thread 10...
+    running thread 9 with 'new-delete allocator' and maxItemSizeExp = 10, maxItems = 21845, iterCount = 100000000, allocated memory access mode: full,  [rnd_seed = 41] ...
+    ...done
+about to run thread 11...
+    running thread 10 with 'new-delete allocator' and maxItemSizeExp = 10, maxItems = 21845, iterCount = 100000000, allocated memory access mode: full,  [rnd_seed = 41] ...
+    ...done
+joining thread 0...
+    running thread 11 with 'new-delete allocator' and maxItemSizeExp = 10, maxItems = 21845, iterCount = 100000000, allocated memory access mode: full,  [rnd_seed = 41] ...
+about to exit thread 11 (100000000 operations performed) [ctr = -4051049675239571671]...
+about to exit thread 3 (100000000 operations performed) [ctr = -4051049675239571671]...
+about to exit thread 7 (100000000 operations performed) [ctr = -4051049675239571671]...
+about to exit thread 8 (100000000 operations performed) [ctr = -4051049675239571671]...
+about to exit thread 1 (100000000 operations performed) [ctr = -4051049675239571671]...
+about to exit thread 9 (100000000 operations performed) [ctr = -4051049675239571671]...
+about to exit thread 5 (100000000 operations performed) [ctr = -4051049675239571671]...
+about to exit thread 4 (100000000 operations performed) [ctr = -4051049675239571671]...
+about to exit thread 10 (100000000 operations performed) [ctr = -4051049675239571671]...
+about to exit thread 2 (100000000 operations performed) [ctr = -4051049675239571671]...
+about to exit thread 6 (100000000 operations performed) [ctr = -4051049675239571671]...
+about to exit thread 0 (100000000 operations performed) [ctr = -4051049675239571671]...
+    ...done
+joining thread 1...
+    ...done
+joining thread 2...
+    ...done
+joining thread 3...
+    ...done
+joining thread 4...
+    ...done
+joining thread 5...
+    ...done
+joining thread 6...
+    ...done
+joining thread 7...
+    ...done
+joining thread 8...
+    ...done
+joining thread 9...
+    ...done
+joining thread 10...
+    ...done
+joining thread 11...
+    ...done
+12 threads made 1200000000 alloc/dealloc operations in 5422 ms (4 ms per 1 million)
+
+real	0m5.423s
+user	0m59.146s
+sys	0m0.136s
+
+--- alloc-testN [slab] ---
+  [run 1]
+threads: 12
+about to run thread 0...
+    ...done
+about to run thread 1...
+    running thread 0 with 'new-delete allocator' and maxItemSizeExp = 10, maxItems = 21845, iterCount = 100000000, allocated memory access mode: full,  [rnd_seed = 41] ...
+    ...done
+about to run thread 2...
+    running thread 1 with 'new-delete allocator' and maxItemSizeExp = 10, maxItems = 21845, iterCount = 100000000, allocated memory access mode: full,  [rnd_seed = 41] ...
+    ...done
+about to run thread 3...
+    running thread 2 with 'new-delete allocator' and maxItemSizeExp = 10, maxItems = 21845, iterCount = 100000000, allocated memory access mode: full,  [rnd_seed = 41] ...
+    ...done
+about to run thread 4...
+    running thread 3 with 'new-delete allocator' and maxItemSizeExp = 10, maxItems = 21845, iterCount = 100000000, allocated memory access mode: full,  [rnd_seed = 41] ...
+    ...done
+about to run thread 5...
+    running thread 4 with 'new-delete allocator' and maxItemSizeExp = 10, maxItems = 21845, iterCount = 100000000, allocated memory access mode: full,  [rnd_seed = 41] ...
+    ...done
+about to run thread 6...
+    running thread 5 with 'new-delete allocator' and maxItemSizeExp = 10, maxItems = 21845, iterCount = 100000000, allocated memory access mode: full,  [rnd_seed = 41] ...
+    ...done
+about to run thread 7...
+    running thread 6 with 'new-delete allocator' and maxItemSizeExp = 10, maxItems = 21845, iterCount = 100000000, allocated memory access mode: full,  [rnd_seed = 41] ...
+    ...done
+about to run thread 8...
+    running thread 7 with 'new-delete allocator' and maxItemSizeExp = 10, maxItems = 21845, iterCount = 100000000, allocated memory access mode: full,  [rnd_seed = 41] ...
+    ...done
+about to run thread 9...
+    running thread 8 with 'new-delete allocator' and maxItemSizeExp = 10, maxItems = 21845, iterCount = 100000000, allocated memory access mode: full,  [rnd_seed = 41] ...
+    ...done
+about to run thread 10...
+    running thread 9 with 'new-delete allocator' and maxItemSizeExp = 10, maxItems = 21845, iterCount = 100000000, allocated memory access mode: full,  [rnd_seed = 41] ...
+    ...done
+about to run thread 11...
+    ...done
+joining thread 0...
+    running thread 10 with 'new-delete allocator' and maxItemSizeExp = 10, maxItems = 21845, iterCount = 100000000, allocated memory access mode: full,  [rnd_seed = 41] ...
+    running thread 11 with 'new-delete allocator' and maxItemSizeExp = 10, maxItems = 21845, iterCount = 100000000, allocated memory access mode: full,  [rnd_seed = 41] ...
+about to exit thread 8 (100000000 operations performed) [ctr = -4051049675239571671]...
+about to exit thread 1 (100000000 operations performed) [ctr = -4051049675239571671]...
+about to exit thread 7 (100000000 operations performed) [ctr = -4051049675239571671]...
+about to exit thread 10 (100000000 operations performed) [ctr = -4051049675239571671]...
+about to exit thread 0 (100000000 operations performed) [ctr = -4051049675239571671]...
+    ...done
+joining thread 1...
+    ...done
+joining thread 2...
+about to exit thread 2 (100000000 operations performed) [ctr = -4051049675239571671]...
+    ...done
+joining thread 3...
+about to exit thread 5 (100000000 operations performed) [ctr = -4051049675239571671]...
+about to exit thread 6 (100000000 operations performed) [ctr = -4051049675239571671]...
+about to exit thread 4 (100000000 operations performed) [ctr = -4051049675239571671]...
+about to exit thread 3 (100000000 operations performed) [ctr = -4051049675239571671]...
+    ...done
+joining thread 4...
+    ...done
+joining thread 5...
+    ...done
+joining thread 6...
+    ...done
+joining thread 7...
+    ...done
+joining thread 8...
+    ...done
+joining thread 9...
+about to exit thread 11 (100000000 operations performed) [ctr = -4051049675239571671]...
+about to exit thread 9 (100000000 operations performed) [ctr = -4051049675239571671]...
+    ...done
+joining thread 10...
+    ...done
+joining thread 11...
+    ...done
+12 threads made 1200000000 alloc/dealloc operations in 5154 ms (4 ms per 1 million)
+
+real	0m5.155s
+user	0m55.785s
+sys	0m0.152s
+  [run 2]
+threads: 12
+about to run thread 0...
+    ...done
+about to run thread 1...
+    running thread 0 with 'new-delete allocator' and maxItemSizeExp = 10, maxItems = 21845, iterCount = 100000000, allocated memory access mode: full,  [rnd_seed = 41] ...
+    ...done
+about to run thread 2...
+    running thread 1 with 'new-delete allocator' and maxItemSizeExp = 10, maxItems = 21845, iterCount = 100000000, allocated memory access mode: full,  [rnd_seed = 41] ...
+    ...done
+about to run thread 3...
+    running thread 2 with 'new-delete allocator' and maxItemSizeExp = 10, maxItems = 21845, iterCount = 100000000, allocated memory access mode: full,  [rnd_seed = 41] ...
+    ...done
+about to run thread 4...
+    running thread 3 with 'new-delete allocator' and maxItemSizeExp = 10, maxItems = 21845, iterCount = 100000000, allocated memory access mode: full,  [rnd_seed = 41] ...
+    ...done
+about to run thread 5...
+    running thread 4 with 'new-delete allocator' and maxItemSizeExp = 10, maxItems = 21845, iterCount = 100000000, allocated memory access mode: full,  [rnd_seed = 41] ...
+    ...done
+about to run thread 6...
+    running thread 5 with 'new-delete allocator' and maxItemSizeExp = 10, maxItems = 21845, iterCount = 100000000, allocated memory access mode: full,  [rnd_seed = 41] ...
+    ...done
+about to run thread 7...
+    running thread 6 with 'new-delete allocator' and maxItemSizeExp = 10, maxItems = 21845, iterCount = 100000000, allocated memory access mode: full,  [rnd_seed = 41] ...
+    ...done
+about to run thread 8...
+    running thread 7 with 'new-delete allocator' and maxItemSizeExp = 10, maxItems = 21845, iterCount = 100000000, allocated memory access mode: full,  [rnd_seed = 41] ...
+    ...done
+about to run thread 9...
+    running thread 8 with 'new-delete allocator' and maxItemSizeExp = 10, maxItems = 21845, iterCount = 100000000, allocated memory access mode: full,  [rnd_seed = 41] ...
+    ...done
+about to run thread 10...
+    running thread 9 with 'new-delete allocator' and maxItemSizeExp = 10, maxItems = 21845, iterCount = 100000000, allocated memory access mode: full,  [rnd_seed = 41] ...
+    ...done
+about to run thread 11...
+    running thread 10 with 'new-delete allocator' and maxItemSizeExp = 10, maxItems = 21845, iterCount = 100000000, allocated memory access mode: full,  [rnd_seed = 41] ...
+    ...done
+joining thread 0...
+    running thread 11 with 'new-delete allocator' and maxItemSizeExp = 10, maxItems = 21845, iterCount = 100000000, allocated memory access mode: full,  [rnd_seed = 41] ...
+about to exit thread 4 (100000000 operations performed) [ctr = -4051049675239571671]...
+about to exit thread 10 (100000000 operations performed) [ctr = -4051049675239571671]...
+about to exit thread 3 (100000000 operations performed) [ctr = -4051049675239571671]...
+about to exit thread 9 (100000000 operations performed) [ctr = -4051049675239571671]...
+about to exit thread 11 (100000000 operations performed) [ctr = -4051049675239571671]...
+about to exit thread 2 (100000000 operations performed) [ctr = -4051049675239571671]...
+about to exit thread 7 (100000000 operations performed) [ctr = -4051049675239571671]...
+about to exit thread 8 (100000000 operations performed) [ctr = -4051049675239571671]...
+about to exit thread 0 (100000000 operations performed) [ctr = -4051049675239571671]...
+    ...done
+joining thread 1...
+about to exit thread 6 (100000000 operations performed) [ctr = -4051049675239571671]...
+about to exit thread 1 (100000000 operations performed) [ctr = -4051049675239571671]...
+    ...done
+joining thread 2...
+    ...done
+joining thread 3...
+    ...done
+joining thread 4...
+    ...done
+joining thread 5...
+about to exit thread 5 (100000000 operations performed) [ctr = -4051049675239571671]...
+    ...done
+joining thread 6...
+    ...done
+joining thread 7...
+    ...done
+joining thread 8...
+    ...done
+joining thread 9...
+    ...done
+joining thread 10...
+    ...done
+joining thread 11...
+    ...done
+12 threads made 1200000000 alloc/dealloc operations in 4936 ms (4 ms per 1 million)
+
+real	0m4.937s
+user	0m55.563s
+sys	0m0.167s
+  [run 3]
+threads: 12
+about to run thread 0...
+    ...done
+about to run thread 1...
+    running thread 0 with 'new-delete allocator' and maxItemSizeExp = 10, maxItems = 21845, iterCount = 100000000, allocated memory access mode: full,  [rnd_seed = 41] ...
+    ...done
+about to run thread 2...
+    running thread 1 with 'new-delete allocator' and maxItemSizeExp = 10, maxItems = 21845, iterCount = 100000000, allocated memory access mode: full,  [rnd_seed = 41] ...
+    ...done
+about to run thread 3...
+    running thread 2 with 'new-delete allocator' and maxItemSizeExp = 10, maxItems = 21845, iterCount = 100000000, allocated memory access mode: full,  [rnd_seed = 41] ...
+    ...done
+about to run thread 4...
+    running thread 3 with 'new-delete allocator' and maxItemSizeExp = 10, maxItems = 21845, iterCount = 100000000, allocated memory access mode: full,  [rnd_seed = 41] ...
+    ...done
+about to run thread 5...
+    running thread 4 with 'new-delete allocator' and maxItemSizeExp = 10, maxItems = 21845, iterCount = 100000000, allocated memory access mode: full,  [rnd_seed = 41] ...
+    ...done
+about to run thread 6...
+    running thread 5 with 'new-delete allocator' and maxItemSizeExp = 10, maxItems = 21845, iterCount = 100000000, allocated memory access mode: full,  [rnd_seed = 41] ...
+    ...done
+about to run thread 7...
+    running thread 6 with 'new-delete allocator' and maxItemSizeExp = 10, maxItems = 21845, iterCount = 100000000, allocated memory access mode: full,  [rnd_seed = 41] ...
+    ...done
+about to run thread 8...
+    running thread 7 with 'new-delete allocator' and maxItemSizeExp = 10, maxItems = 21845, iterCount = 100000000, allocated memory access mode: full,  [rnd_seed = 41] ...
+    ...done
+about to run thread 9...
+    running thread 8 with 'new-delete allocator' and maxItemSizeExp = 10, maxItems = 21845, iterCount = 100000000, allocated memory access mode: full,  [rnd_seed = 41] ...
+    ...done
+about to run thread 10...
+    running thread 9 with 'new-delete allocator' and maxItemSizeExp = 10, maxItems = 21845, iterCount = 100000000, allocated memory access mode: full,  [rnd_seed = 41] ...
+    ...done
+about to run thread 11...
+    running thread 10 with 'new-delete allocator' and maxItemSizeExp = 10, maxItems = 21845, iterCount = 100000000, allocated memory access mode: full,  [rnd_seed = 41] ...
+    ...done
+joining thread 0...
+    running thread 11 with 'new-delete allocator' and maxItemSizeExp = 10, maxItems = 21845, iterCount = 100000000, allocated memory access mode: full,  [rnd_seed = 41] ...
+about to exit thread 6 (100000000 operations performed) [ctr = -4051049675239571671]...
+about to exit thread 0 (100000000 operations performed) [ctr = -4051049675239571671]...
+    ...done
+joining thread 1...
+about to exit thread 10 (100000000 operations performed) [ctr = -4051049675239571671]...
+about to exit thread 3 (100000000 operations performed) [ctr = -4051049675239571671]...
+about to exit thread 4 (100000000 operations performed) [ctr = -4051049675239571671]...
+about to exit thread 2 (100000000 operations performed) [ctr = -4051049675239571671]...
+about to exit thread 7 (100000000 operations performed) [ctr = -4051049675239571671]...
+about to exit thread 1 (100000000 operations performed) [ctr = -4051049675239571671]...
+    ...done
+joining thread 2...
+    ...done
+joining thread 3...
+    ...done
+joining thread 4...
+    ...done
+joining thread 5...
+about to exit thread 11 (100000000 operations performed) [ctr = -4051049675239571671]...
+about to exit thread 9 (100000000 operations performed) [ctr = -4051049675239571671]...
+about to exit thread 5 (100000000 operations performed) [ctr = -4051049675239571671]...
+    ...done
+joining thread 6...
+    ...done
+joining thread 7...
+    ...done
+joining thread 8...
+about to exit thread 8 (100000000 operations performed) [ctr = -4051049675239571671]...
+    ...done
+joining thread 9...
+    ...done
+joining thread 10...
+    ...done
+joining thread 11...
+    ...done
+12 threads made 1200000000 alloc/dealloc operations in 5116 ms (4 ms per 1 million)
+
+real	0m5.118s
+user	0m56.821s
+sys	0m0.186s
+
+--- alloc-testN [jemalloc] ---
+  [run 1]
+threads: 12
+about to run thread 0...
+    ...done
+about to run thread 1...
+    running thread 0 with 'new-delete allocator' and maxItemSizeExp = 10, maxItems = 21845, iterCount = 100000000, allocated memory access mode: full,  [rnd_seed = 41] ...
+    ...done
+about to run thread 2...
+    running thread 1 with 'new-delete allocator' and maxItemSizeExp = 10, maxItems = 21845, iterCount = 100000000, allocated memory access mode: full,  [rnd_seed = 41] ...
+    ...done
+about to run thread 3...
+    running thread 2 with 'new-delete allocator' and maxItemSizeExp = 10, maxItems = 21845, iterCount = 100000000, allocated memory access mode: full,  [rnd_seed = 41] ...
+    ...done
+about to run thread 4...
+    running thread 3 with 'new-delete allocator' and maxItemSizeExp = 10, maxItems = 21845, iterCount = 100000000, allocated memory access mode: full,  [rnd_seed = 41] ...
+    ...done
+about to run thread 5...
+    running thread 4 with 'new-delete allocator' and maxItemSizeExp = 10, maxItems = 21845, iterCount = 100000000, allocated memory access mode: full,  [rnd_seed = 41] ...
+    ...done
+about to run thread 6...
+    running thread 5 with 'new-delete allocator' and maxItemSizeExp = 10, maxItems = 21845, iterCount = 100000000, allocated memory access mode: full,  [rnd_seed = 41] ...
+    ...done
+about to run thread 7...
+    running thread 6 with 'new-delete allocator' and maxItemSizeExp = 10, maxItems = 21845, iterCount = 100000000, allocated memory access mode: full,  [rnd_seed = 41] ...
+    ...done
+about to run thread 8...
+    running thread 7 with 'new-delete allocator' and maxItemSizeExp = 10, maxItems = 21845, iterCount = 100000000, allocated memory access mode: full,  [rnd_seed = 41] ...
+    ...done
+about to run thread 9...
+    running thread 8 with 'new-delete allocator' and maxItemSizeExp = 10, maxItems = 21845, iterCount = 100000000, allocated memory access mode: full,  [rnd_seed = 41] ...
+    ...done
+about to run thread 10...
+    running thread 9 with 'new-delete allocator' and maxItemSizeExp = 10, maxItems = 21845, iterCount = 100000000, allocated memory access mode: full,  [rnd_seed = 41] ...
+    ...done
+about to run thread 11...
+    running thread 10 with 'new-delete allocator' and maxItemSizeExp = 10, maxItems = 21845, iterCount = 100000000, allocated memory access mode: full,  [rnd_seed = 41] ...
+    ...done
+joining thread 0...
+    running thread 11 with 'new-delete allocator' and maxItemSizeExp = 10, maxItems = 21845, iterCount = 100000000, allocated memory access mode: full,  [rnd_seed = 41] ...
+about to exit thread 2 (100000000 operations performed) [ctr = -4051049675239571671]...
+about to exit thread 11 (100000000 operations performed) [ctr = -4051049675239571671]...
+about to exit thread 10 (100000000 operations performed) [ctr = -4051049675239571671]...
+about to exit thread 9 (100000000 operations performed) [ctr = -4051049675239571671]...
+about to exit thread 1 (100000000 operations performed) [ctr = -4051049675239571671]...
+about to exit thread 0 (100000000 operations performed) [ctr = -4051049675239571671]...
+    ...done
+joining thread 1...
+    ...done
+joining thread 2...
+    ...done
+joining thread 3...
+about to exit thread 8 (100000000 operations performed) [ctr = -4051049675239571671]...
+about to exit thread 5 (100000000 operations performed) [ctr = -4051049675239571671]...
+about to exit thread 4 (100000000 operations performed) [ctr = -4051049675239571671]...
+about to exit thread 7 (100000000 operations performed) [ctr = -4051049675239571671]...
+about to exit thread 6 (100000000 operations performed) [ctr = -4051049675239571671]...
+about to exit thread 3 (100000000 operations performed) [ctr = -4051049675239571671]...
+    ...done
+joining thread 4...
+    ...done
+joining thread 5...
+    ...done
+joining thread 6...
+    ...done
+joining thread 7...
+    ...done
+joining thread 8...
+    ...done
+joining thread 9...
+    ...done
+joining thread 10...
+    ...done
+joining thread 11...
+    ...done
+12 threads made 1200000000 alloc/dealloc operations in 4354 ms (3 ms per 1 million)
+
+real	0m4.355s
+user	0m48.169s
+sys	0m0.160s
+  [run 2]
+threads: 12
+about to run thread 0...
+    ...done
+about to run thread 1...
+    running thread 0 with 'new-delete allocator' and maxItemSizeExp = 10, maxItems = 21845, iterCount = 100000000, allocated memory access mode: full,  [rnd_seed = 41] ...
+    ...done
+about to run thread 2...
+    running thread 1 with 'new-delete allocator' and maxItemSizeExp = 10, maxItems = 21845, iterCount = 100000000, allocated memory access mode: full,  [rnd_seed = 41] ...
+    ...done
+about to run thread 3...
+    running thread 2 with 'new-delete allocator' and maxItemSizeExp = 10, maxItems = 21845, iterCount = 100000000, allocated memory access mode: full,  [rnd_seed = 41] ...
+    ...done
+about to run thread 4...
+    ...done
+about to run thread 5...
+    running thread 4 with 'new-delete allocator' and maxItemSizeExp = 10, maxItems = 21845, iterCount = 100000000, allocated memory access mode: full,  [rnd_seed = 41] ...
+    ...done
+about to run thread 6...
+    running thread 3 with 'new-delete allocator' and maxItemSizeExp = 10, maxItems = 21845, iterCount = 100000000, allocated memory access mode: full,  [rnd_seed = 41] ...
+    running thread 5 with 'new-delete allocator' and maxItemSizeExp = 10, maxItems = 21845, iterCount = 100000000, allocated memory access mode: full,  [rnd_seed = 41] ...
+    ...done
+about to run thread 7...
+    running thread 6 with 'new-delete allocator' and maxItemSizeExp = 10, maxItems = 21845, iterCount = 100000000, allocated memory access mode: full,  [rnd_seed = 41] ...
+    ...done
+about to run thread 8...
+    running thread 7 with 'new-delete allocator' and maxItemSizeExp = 10, maxItems = 21845, iterCount = 100000000, allocated memory access mode: full,  [rnd_seed = 41] ...
+    ...done
+about to run thread 9...
+    running thread 8 with 'new-delete allocator' and maxItemSizeExp = 10, maxItems = 21845, iterCount = 100000000, allocated memory access mode: full,  [rnd_seed = 41] ...
+    ...done
+about to run thread 10...
+    running thread 9 with 'new-delete allocator' and maxItemSizeExp = 10, maxItems = 21845, iterCount = 100000000, allocated memory access mode: full,  [rnd_seed = 41] ...
+    ...done
+about to run thread 11...
+    running thread 10 with 'new-delete allocator' and maxItemSizeExp = 10, maxItems = 21845, iterCount = 100000000, allocated memory access mode: full,  [rnd_seed = 41] ...
+    ...done
+joining thread 0...
+    running thread 11 with 'new-delete allocator' and maxItemSizeExp = 10, maxItems = 21845, iterCount = 100000000, allocated memory access mode: full,  [rnd_seed = 41] ...
+about to exit thread 5 (100000000 operations performed) [ctr = -4051049675239571671]...
+about to exit thread 9 (100000000 operations performed) [ctr = -4051049675239571671]...
+about to exit thread 1 (100000000 operations performed) [ctr = -4051049675239571671]...
+about to exit thread 4 (100000000 operations performed) [ctr = -4051049675239571671]...
+about to exit thread 0 (100000000 operations performed) [ctr = -4051049675239571671]...
+    ...done
+joining thread 1...
+    ...done
+joining thread 2...
+about to exit thread 7 (100000000 operations performed) [ctr = -4051049675239571671]...
+about to exit thread 6 (100000000 operations performed) [ctr = -4051049675239571671]...
+about to exit thread 8 (100000000 operations performed) [ctr = -4051049675239571671]...
+about to exit thread 10 (100000000 operations performed) [ctr = -4051049675239571671]...
+about to exit thread 2 (100000000 operations performed) [ctr = -4051049675239571671]...
+    ...done
+joining thread 3...
+about to exit thread 3 (100000000 operations performed) [ctr = -4051049675239571671]...
+    ...done
+joining thread 4...
+    ...done
+joining thread 5...
+    ...done
+joining thread 6...
+    ...done
+joining thread 7...
+    ...done
+joining thread 8...
+    ...done
+joining thread 9...
+    ...done
+joining thread 10...
+    ...done
+joining thread 11...
+about to exit thread 11 (100000000 operations performed) [ctr = -4051049675239571671]...
+    ...done
+12 threads made 1200000000 alloc/dealloc operations in 4389 ms (3 ms per 1 million)
+
+real	0m4.391s
+user	0m48.095s
+sys	0m0.167s
+  [run 3]
+threads: 12
+about to run thread 0...
+    ...done
+about to run thread 1...
+    running thread 0 with 'new-delete allocator' and maxItemSizeExp = 10, maxItems = 21845, iterCount = 100000000, allocated memory access mode: full,  [rnd_seed = 41] ...
+    ...done
+about to run thread 2...
+    running thread 1 with 'new-delete allocator' and maxItemSizeExp = 10, maxItems = 21845, iterCount = 100000000, allocated memory access mode: full,  [rnd_seed = 41] ...
+    ...done
+about to run thread 3...
+    running thread 2 with 'new-delete allocator' and maxItemSizeExp = 10, maxItems = 21845, iterCount = 100000000, allocated memory access mode: full,  [rnd_seed = 41] ...
+    ...done
+about to run thread 4...
+    running thread 3 with 'new-delete allocator' and maxItemSizeExp = 10, maxItems = 21845, iterCount = 100000000, allocated memory access mode: full,  [rnd_seed = 41] ...
+    ...done
+about to run thread 5...
+    running thread 4 with 'new-delete allocator' and maxItemSizeExp = 10, maxItems = 21845, iterCount = 100000000, allocated memory access mode: full,  [rnd_seed = 41] ...
+    ...done
+about to run thread 6...
+    running thread 5 with 'new-delete allocator' and maxItemSizeExp = 10, maxItems = 21845, iterCount = 100000000, allocated memory access mode: full,  [rnd_seed = 41] ...
+    ...done
+about to run thread 7...
+    running thread 6 with 'new-delete allocator' and maxItemSizeExp = 10, maxItems = 21845, iterCount = 100000000, allocated memory access mode: full,  [rnd_seed = 41] ...
+    ...done
+about to run thread 8...
+    running thread 7 with 'new-delete allocator' and maxItemSizeExp = 10, maxItems = 21845, iterCount = 100000000, allocated memory access mode: full,  [rnd_seed = 41] ...
+    ...done
+about to run thread 9...
+    running thread 8 with 'new-delete allocator' and maxItemSizeExp = 10, maxItems = 21845, iterCount = 100000000, allocated memory access mode: full,  [rnd_seed = 41] ...
+    ...done
+about to run thread 10...
+    running thread 9 with 'new-delete allocator' and maxItemSizeExp = 10, maxItems = 21845, iterCount = 100000000, allocated memory access mode: full,  [rnd_seed = 41] ...
+    ...done
+about to run thread 11...
+    running thread 10 with 'new-delete allocator' and maxItemSizeExp = 10, maxItems = 21845, iterCount = 100000000, allocated memory access mode: full,  [rnd_seed = 41] ...
+    ...done
+joining thread 0...
+    running thread 11 with 'new-delete allocator' and maxItemSizeExp = 10, maxItems = 21845, iterCount = 100000000, allocated memory access mode: full,  [rnd_seed = 41] ...
+about to exit thread 2 (100000000 operations performed) [ctr = -4051049675239571671]...
+about to exit thread 9 (100000000 operations performed) [ctr = -4051049675239571671]...
+about to exit thread 10 (100000000 operations performed) [ctr = -4051049675239571671]...
+about to exit thread 4 (100000000 operations performed) [ctr = -4051049675239571671]...
+about to exit thread 3 (100000000 operations performed) [ctr = -4051049675239571671]...
+about to exit thread 5 (100000000 operations performed) [ctr = -4051049675239571671]...
+about to exit thread 6 (100000000 operations performed) [ctr = -4051049675239571671]...
+about to exit thread 11 (100000000 operations performed) [ctr = -4051049675239571671]...
+about to exit thread 0 (100000000 operations performed) [ctr = -4051049675239571671]...
+    ...done
+joining thread 1...
+about to exit thread 1 (100000000 operations performed) [ctr = -4051049675239571671]...
+    ...done
+joining thread 2...
+    ...done
+joining thread 3...
+    ...done
+joining thread 4...
+    ...done
+joining thread 5...
+    ...done
+joining thread 6...
+    ...done
+joining thread 7...
+about to exit thread 8 (100000000 operations performed) [ctr = -4051049675239571671]...
+about to exit thread 7 (100000000 operations performed) [ctr = -4051049675239571671]...
+    ...done
+joining thread 8...
+    ...done
+joining thread 9...
+    ...done
+joining thread 10...
+    ...done
+joining thread 11...
+    ...done
+12 threads made 1200000000 alloc/dealloc operations in 4317 ms (3 ms per 1 million)
+
+real	0m4.318s
+user	0m48.425s
+sys	0m0.143s
+
+--- cache-scratch1 [malloc] ---
+  [run 1]
+
+real	0m0.999s
+user	0m0.996s
+sys	0m0.001s
+  [run 2]
+
+real	0m1.008s
+user	0m1.004s
+sys	0m0.001s
+  [run 3]
+
+real	0m0.995s
+user	0m0.992s
+sys	0m0.001s
+
+--- cache-scratch1 [dyn_slab] ---
+  [run 1]
+
+real	0m1.002s
+user	0m0.:00s
+sys	0m0.000s
+  [run 2]
+
+real	0m0.985s
+user	0m0.981s
+sys	0m0.001s
+  [run 3]
+
+real	0m0.981s
+user	0m0.978s
+sys	0m0.001s
+
+--- cache-scratch1 [slab] ---
+  [run 1]
+
+real	0m0.997s
+user	0m0.993s
+sys	0m0.001s
+  [run 2]
+
+real	0m0.984s
+user	0m0.980s
+sys	0m0.001s
+  [run 3]
+
+real	0m0.995s
+user	0m0.991s
+sys	0m0.002s
+
+--- cache-scratch1 [jemalloc] ---
+  [run 1]
+
+real	0m0.972s
+user	0m0.969s
+sys	0m0.001s
+  [run 2]
+
+real	0m1.002s
+user	0m0.987s
+sys	0m0.004s
+  [run 3]
+
+real	0m0.967s
+user	0m0.963s
+sys	0m0.001s
+
+--- cache-scratchN [malloc] ---
+  [run 1]
+
+real	0m0.177s
+user	0m1.942s
+sys	0m0.002s
+  [run 2]
+
+real	0m0.183s
+user	0m2.012s
+sys	0m0.004s
+  [run 3]
+
+real	0m0.180s
+user	0m2.038s
+sys	0m0.003s
+
+--- cache-scratchN [dyn_slab] ---
+  [run 1]
+
+real	0m0.185s
+user	0m2.056s
+sys	0m0.008s
+  [run 2]
+
+real	0m0.185s
+user	0m2.064s
+sys	0m0.003s
+  [run 3]
+
+real	0m0.190s
+user	0m2.051s
+sys	0m0.006s
+
+--- cache-scratchN [slab] ---
+  [run 1]
+
+real	0m0.185s
+user	0m2.041s
+sys	0m0.006s
+  [run 2]
+
+real	0m0.187s
+user	0m2.064s
+sys	0m0.009s
+  [run 3]
+
+real	0m0.188s
+user	0m2.071s
+sys	0m0.002s
+
+--- cache-scratchN [jemalloc] ---
+  [run 1]
+
+real	0m0.193s
+user	0m2.072s
+sys	0m0.003s
+  [run 2]
+
+real	0m0.197s
+user	0m2.041s
+sys	0m0.004s
+  [run 3]
+
+real	0m0.188s
+user	0m2.060s
+sys	0m0.005s
+
+--- cache-thrash1 [malloc] ---
+  [run 1]
+
+real	0m0.974s
+user	0m0.971s
+sys	0m0.000s
+  [run 2]
+
+real	0m0.968s
+user	0m0.966s
+sys	0m0.000s
+  [run 3]
+
+real	0m1.000s
+user	0m0.993s
+sys	0m0.000s
+
+--- cache-thrash1 [dyn_slab] ---
+  [run 1]
+
+real	0m0.962s
+user	0m0.960s
+sys	0m0.000s
+  [run 2]
+
+real	0m1.012s
+user	0m1.008s
+sys	0m0.001s
+  [run 3]
+
+real	0m0.960s
+user	0m0.957s
+sys	0m0.001s
+
+--- cache-thrash1 [slab] ---
+  [run 1]
+
+real	0m0.958s
+user	0m0.955s
+sys	0m0.001s
+  [run 2]
+
+real	0m0.985s
+user	0m0.977s
+sys	0m0.000s
+  [run 3]
+
+real	0m0.953s
+user	0m0.950s
+sys	0m0.000s
+
+--- cache-thrash1 [jemalloc] ---
+  [run 1]
+
+real	0m0.949s
+user	0m0.946s
+sys	0m0.001s
+  [run 2]
+
+real	0m0.950s
+user	0m0.946s
+sys	0m0.001s
+  [run 3]
+
+real	0m0.956s
+user	0m0.953s
+sys	0m0.001s
+
+--- cache-thrashN [malloc] ---
+  [run 1]
+
+real	0m0.173s
+user	0m1.923s
+sys	0m0.002s
+  [run 2]
+
+real	0m0.179s
+user	0m1.970s
+sys	0m0.004s
+  [run 3]
+
+real	0m0.177s
+user	0m1.986s
+sys	0m0.004s
+
+--- cache-thrashN [dyn_slab] ---
+  [run 1]
+
+real	0m0.180s
+user	0m2.018s
+sys	0m0.003s
+  [run 2]
+
+real	0m0.182s
+user	0m2.029s
+sys	0m0.005s
+  [run 3]
+
+real	0m0.193s
+user	0m2.039s
+sys	0m0.001s
+
+--- cache-thrashN [slab] ---
+  [run 1]
+
+real	0m0.239s
+user	0m1.845s
+sys	0m0.003s
+  [run 2]
+
+real	0m0.184s
+user	0m2.042s
+sys	0m0.003s
+  [run 3]
+
+real	0m0.182s
+user	0m2.050s
+sys	0m0.002s
+
+--- cache-thrashN [jemalloc] ---
+  [run 1]
+
+real	0m0.184s
+user	0m2.046s
+sys	0m0.003s
+  [run 2]
+
+real	0m0.185s
+user	0m2.048s
+sys	0m0.001s
+  [run 3]
+
+real	0m0.189s
+user	0m2.034s
+sys	0m0.006s
+
+--- xmalloc-test [malloc] ---
+  [run 1]
+rtime: 1.982, free/sec: 50.456 M
+
+real	0m5.015s
+user	0m30.235s
+sys	0m23.524s
+  [run 2]
+rtime: 2.015, free/sec: 49.626 M
+
+real	0m5.014s
+user	0m30.243s
+sys	0m23.858s
+  [run 3]
+rtime: 2.061, free/sec: 48.514 M
+
+real	0m5.014s
+user	0m29.831s
+sys	0m24.361s
+
+--- xmalloc-test [dyn_slab] ---
+  [run 1]
+rtime: 2.213, free/sec: 45.180 M
+
+real	0m5.016s
+user	0m30.344s
+sys	0m23.676s
+  [run 2]
+rtime: 2.281, free/sec: 43.840 M
+
+real	0m5.017s
+user	0m30.679s
+sys	0m23.900s
+  [run 3]
+rtime: 2.309, free/sec: 43.302 M
+
+real	0m5.016s
+user	0m30.636s
+sys	0m23.994s
+
+--- xmalloc-test [slab] ---
+  [run 1]
+rtime: 2.345, free/sec: 42.640 M
+
+real	0m5.017s
+user	0m29.650s
+sys	0m24.642s
+  [run 2]
+rtime: 2.348, free/sec: 42.581 M
+
+real	0m5.021s
+user	0m29.647s
+sys	0m24.559s
+  [run 3]
+rtime: 2.369, free/sec: 42.211 M
+
+real	0m5.017s
+user	0m29.760s
+sys	0m24.188s
+
+--- xmalloc-test [jemalloc] ---
+  [run 1]
+rtime: 0.409, free/sec: 244.204 M
+
+real	0m5.012s
+user	0m54.494s
+sys	0m0.777s
+  [run 2]
+rtime: 0.414, free/sec: 241.828 M
+
+real	0m5.010s
+user	0m54.007s
+sys	0m0.839s
+  [run 3]
+rtime: 0.416, free/sec: 240.464 M
+
+real	0m5.010s
+user	0m53.735s
+sys	0m0.797s
+
+--- malloc-large [malloc] ---
+  [run 1]
+
+real	0m1.837s
+user	0m1.169s
+sys	0m0.652s
+  [run 2]
+
+real	0m1.838s
+user	0m1.174s
+sys	0m0.635s
+  [run 3]
+
+real	0m1.742s
+user	0m1.099s
+sys	0m0.615s
+
+--- malloc-large [dyn_slab] ---
+  [run 1]
+
+real	0m1.456s
+user	0m0.936s
+sys	0m0.513s
+  [run 2]
+
+real	0m1.469s
+user	0m0.951s
+sys	0m0.513s
+  [run 3]
+
+real	0m1.441s
+user	0m0.924s
+sys	0m0.513s
+
+--- malloc-large [slab] ---
+  [run 1]
+
+real	0m1.430s
+user	0m0.922s
+sys	0m0.504s
+  [run 2]
+
+real	0m1.457s
+user	0m0.930s
+sys	0m0.523s
+  [run 3]
+
+real	0m1.448s
+user	0m0.928s
+sys	0m0.517s
+
+--- malloc-large [jemalloc] ---
+  [run 1]
+
+real	0m9.519s
+user	0m1.800s
+sys	0m7.692s
+  [run 2]
+
+real	0m9.429s
+user	0m1.857s
+sys	0m7.547s
+  [run 3]
+
+real	0m9.386s
+user	0m1.713s
+sys	0m7.557s
+
+--- mstress [malloc] ---
+  [run 1]
+start with 12 threads with a 50% load-per-thread and 25 iterations
+
+real	0m0.803s
+user	0m4.718s
+sys	0m0.526s
+  [run 2]
+start with 12 threads with a 50% load-per-thread and 25 iterations
+
+real	0m0.912s
+user	0m4.985s
+sys	0m0.642s
+  [run 3]
+start with 12 threads with a 50% load-per-thread and 25 iterations
+
+real	0m0.987s
+user	0m5.441s
+sys	0m0.763s
+
+--- mstress [dyn_slab] ---
+  [run 1]
+start with 12 threads with a 50% load-per-thread and 25 iterations
+
+real	0m1.014s
+user	0m5.418s
+sys	0m0.844s
+  [run 2]
+start with 12 threads with a 50% load-per-thread and 25 iterations
+
+real	0m0.975s
+user	0m5.513s
+sys	0m0.732s
+  [run 3]
+start with 12 threads with a 50% load-per-thread and 25 iterations
+
+real	0m0.996s
+user	0m5.389s
+sys	0m0.843s
+
+--- mstress [slab] ---
+  [run 1]
+start with 12 threads with a 50% load-per-thread and 25 iterations
+
+real	0m1.026s
+user	0m5.595s
+sys	0m0.889s
+  [run 2]
+start with 12 threads with a 50% load-per-thread and 25 iterations
+
+real	0m1.030s
+user	0m5.504s
+sys	0m0.843s
+  [run 3]
+start with 12 threads with a 50% load-per-thread and 25 iterations
+
+real	0m1.052s
+user	0m5.561s
+sys	0m0.893s
+
+--- mstress [jemalloc] ---
+  [run 1]
+start with 12 threads with a 50% load-per-thread and 25 iterations
+
+real	0m0.863s
+user	0m3.009s
+sys	0m1.966s
+  [run 2]
+start with 12 threads with a 50% load-per-thread and 25 iterations
+
+real	0m0.817s
+user	0m2.979s
+sys	0m1.929s
+  [run 3]
+start with 12 threads with a 50% load-per-thread and 25 iterations
+
+real	0m0.844s
+user	0m3.049s
+sys	0m1.955s
+
+--- mleak5 [malloc] ---
+  [run 1]
+Using 10 threads with 100*5 iterations
+
+real	0m0.053s
+user	0m0.014s
+sys	0m0.077s
+  [run 2]
+Using 10 threads with 100*5 iterations
+
+real	0m0.056s
+user	0m0.010s
+sys	0m0.086s
+  [run 3]
+Using 10 threads with 100*5 iterations
+
+real	0m0.052s
+user	0m0.012s
+sys	0m0.077s
+
+--- mleak5 [dyn_slab] ---
+  [run 1]
+Using 10 threads with 100*5 iterations
+
+real	0m0.084s
+user	0m0.017s
+sys	0m0.104s
+  [run 2]
+Using 10 threads with 100*5 iterations
+
+real	0m0.085s
+user	0m0.018s
+sys	0m0.104s
+  [run 3]
+Using 10 threads with 100*5 iterations
+
+real	0m0.085s
+user	0m0.022s
+sys	0m0.100s
+
+--- mleak5 [slab] ---
+  [run 1]
+Using 10 threads with 100*5 iterations
+
+real	0m0.083s
+user	0m0.018s
+sys	0m0.104s
+  [run 2]
+Using 10 threads with 100*5 iterations
+
+real	0m0.082s
+user	0m0.027s
+sys	0m0.094s
+  [run 3]
+Using 10 threads with 100*5 iterations
+
+real	0m0.085s
+user	0m0.018s
+sys	0m0.104s
+
+--- mleak5 [jemalloc] ---
+  [run 1]
+Using 10 threads with 100*5 iterations
+
+real	0m0.061s
+user	0m0.046s
+sys	0m0.085s
+  [run 2]
+Using 10 threads with 100*5 iterations
+
+real	0m0.058s
+user	0m0.045s
+sys	0m0.083s
+  [run 3]
+Using 10 threads with 100*5 iterations
+
+real	0m0.058s
+user	0m0.043s
+sys	0m0.083s
+
+--- mleak50 [malloc] ---
+  [run 1]
+Using 10 threads with 100*50 iterations
+
+real	0m0.504s
+user	0m0.117s
+sys	0m0.763s
+  [run 2]
+Using 10 threads with 100*50 iterations
+
+real	0m0.504s
+user	0m0.120s
+sys	0m0.764s
+  [run 3]
+Using 10 threads with 100*50 iterations
+
+real	0m0.522s
+user	0m0.111s
+sys	0m0.794s
+
+--- mleak50 [dyn_slab] ---
+  [run 1]
+Using 10 threads with 100*50 iterations
+
+real	0m0.955s
+user	0m0.214s
+sys	0m1.148s
+  [run 2]
+Using 10 threads with 100*50 iterations
+
+real	0m0.932s
+user	0m0.205s
+sys	0m1.128s
+  [run 3]
+Using 10 threads with 100*50 iterations
+
+real	0m0.919s
+user	0m0.240s
+sys	0m1.074s
+
+--- mleak50 [slab] ---
+  [run 1]
+Using 10 threads with 100*50 iterations
+
+real	0m0.942s
+user	0m0.223s
+sys	0m1.104s
+  [run 2]
+Using 10 threads with 100*50 iterations
+
+real	0m0.895s
+user	0m0.222s
+sys	0m1.068s
+  [run 3]
+Using 10 threads with 100*50 iterations
+
+real	0m0.903s
+user	0m0.225s
+sys	0m1.075s
+
+--- mleak50 [jemalloc] ---
+  [run 1]
+Using 10 threads with 100*50 iterations
+
+real	0m0.679s
+user	0m0.392s
+sys	0m0.962s
+  [run 2]
+Using 10 threads with 100*50 iterations
+
+real	0m0.569s
+user	0m0.413s
+sys	0m0.819s
+  [run 3]
+Using 10 threads with 100*50 iterations
+
+real	0m0.562s
+user	0m0.394s
+sys	0m0.827s
+
+--- rptest [malloc] ---
+  [run 1]
+crt          12 threads random linear size [8,16000] 500 loops 1000 allocs 100 ops: ................................................1540136 memory ops/CPU second (36MiB peak, 23MiB -> 36MiB bytes sample, 57% overhead)
+
+real	0m16.008s
+user	0m2.300s
+sys	0m0.718s
+  [run 2]
+crt          12 threads random linear size [8,16000] 500 loops 1000 allocs 100 ops: ................................................1557431 memory ops/CPU second (40MiB peak, 25MiB -> 40MiB bytes sample, 59% overhead)
+
+real	0m16.008s
+user	0m2.256s
+sys	0m0.713s
+  [run 3]
+crt          12 threads random linear size [8,16000] 500 loops 1000 allocs 100 ops: ................................................1585030 memory ops/CPU second (37MiB peak, 22MiB -> 35MiB bytes sample, 58% overhead)
+
+real	0m16.007s
+user	0m2.306s
+sys	0m0.819s
+
+--- rptest [dyn_slab] ---
+  [run 1]
+crt          12 threads random linear size [8,16000] 500 loops 1000 allocs 100 ops: ................................................1594832 memory ops/CPU second (37MiB peak, 22MiB -> 37MiB bytes sample, 62% overhead)
+
+real	0m16.008s
+user	0m2.360s
+sys	0m0.774s
+  [run 2]
+crt          12 threads random linear size [8,16000] 500 loops 1000 allocs 100 ops: ................................................1603726 memory ops/CPU second (37MiB peak, 23MiB -> 37MiB bytes sample, 62% overhead)
+
+real	0m16.008s
+user	0m2.345s
+sys	0m0.741s
+  [run 3]
+crt          12 threads random linear size [8,16000] 500 loops 1000 allocs 100 ops: ................................................1563741 memory ops/CPU second (38MiB peak, 22MiB -> 37MiB bytes sample, 69% overhead)
+
+real	0m16.009s
+user	0m2.354s
+sys	0m0.725s
+
+--- rptest [slab] ---
+  [run 1]
+crt          12 threads random linear size [8,16000] 500 loops 1000 allocs 100 ops: /home/al/Projects/Palloc/stress_tests/run_mimalloc_bench.sh: line 25: 969398 Segmentation fault         (core dumped) LD_PRELOAD="$preload" "$@"
+
+real	0m1.145s
+user	0m0.005s
+sys	0m0.023s
+  [run 2]
+crt          12 threads random linear size [8,16000] 500 loops 1000 allocs 100 ops: /home/al/Projects/Palloc/stress_tests/run_mimalloc_bench.sh: line 25: 969427 Segmentation fault         (core dumped) LD_PRELOAD="$preload" "$@"
+
+real	0m1.159s
+user	0m0.002s
+sys	0m0.026s
+  [run 3]
+crt          12 threads random linear size [8,16000] 500 loops 1000 allocs 100 ops: free(): invalid size
+/home/al/Projects/Palloc/stress_tests/run_mimalloc_bench.sh: line 25: 969458 Segmentation fault         (core dumped) LD_PRELOAD="$preload" "$@"
+
+real	0m1.158s
+user	0m0.000s
+sys	0m0.024s
+
+--- rptest [jemalloc] ---
+  [run 1]
+crt          12 threads random linear size [8,16000] 500 loops 1000 allocs 100 ops: ................................................1664284 memory ops/CPU second (62MiB peak, 27MiB -> 63MiB bytes sample, 128% overhead)
+
+real	0m16.008s
+user	0m2.529s
+sys	0m0.564s
+  [run 2]
+crt          12 threads random linear size [8,16000] 500 loops 1000 allocs 100 ops: ................................................1639378 memory ops/CPU second (62MiB peak, 26MiB -> 63MiB bytes sample, 144% overhead)
+
+real	0m16.009s
+user	0m2.535s
+sys	0m0.583s
+  [run 3]
+crt          12 threads random linear size [8,16000] 500 loops 1000 allocs 100 ops: ................................................1660844 memory ops/CPU second (65MiB peak, 26MiB -> 65MiB bytes sample, 150% overhead)
+
+real	0m16.008s
+user	0m2.505s
+sys	0m0.560s
+
+--- glibc-simple [malloc] ---
+  [run 1]
+
+real	0m3.064s
+user	0m3.023s
+sys	0m0.013s
+  [run 2]
+
+real	0m3.192s
+user	0m3.151s
+sys	0m0.011s
+  [run 3]
+
+real	0m3.230s
+user	0m3.216s
+sys	0m0.001s
+
+--- glibc-simple [dyn_slab] ---
+  [run 1]
+
+real	0m3.620s
+user	0m3.604s
+sys	0m0.002s
+  [run 2]
+
+real	0m3.580s
+user	0m3.571s
+sys	0m0.000s
+  [run 3]
+
+real	0m3.699s
+user	0m3.690s
+sys	0m0.000s
+
+--- glibc-simple [slab] ---
+  [run 1]
+
+real	0m3.330s
+user	0m3.240s
+sys	0m0.079s
+  [run 2]
+
+real	0m3.435s
+user	0m3.354s
+sys	0m0.070s
+  [run 3]
+
+real	0m3.491s
+user	0m3.406s
+sys	0m0.068s
+
+--- glibc-simple [jemalloc] ---
+  [run 1]
+
+real	0m2.059s
+user	0m2.050s
+sys	0m0.001s
+  [run 2]
+
+real	0m1.988s
+user	0m1.979s
+sys	0m0.002s
+  [run 3]
+
+real	0m1.996s
+user	0m1.987s
+sys	0m0.003s
+
+--- glibc-thread [malloc] ---
+  [run 1]
+606209471 iterations
+
+real	0m2.002s
+user	0m22.853s
+sys	0m0.068s
+  [run 2]
+587135215 iterations
+
+real	0m2.003s
+user	0m22.638s
+sys	0m0.040s
+  [run 3]
+579574414 iterations
+
+real	0m2.002s
+user	0m22.658s
+sys	0m0.049s
+
+--- glibc-thread [dyn_slab] ---
+  [run 1]
+493619291 iterations
+
+real	0m2.003s
+user	0m23.059s
+sys	0m0.049s
+  [run 2]
+496225107 iterations
+
+real	0m2.002s
+user	0m22.974s
+sys	0m0.049s
+  [run 3]
+494656976 iterations
+
+real	0m2.002s
+user	0m23.029s
+sys	0m0.036s
+
+--- glibc-thread [slab] ---
+  [run 1]
+501260705 iterations
+
+real	0m2.002s
+user	0m22.906s
+sys	0m0.052s
+  [run 2]
+502996383 iterations
+
+real	0m2.003s
+user	0m23.055s
+sys	0m0.064s
+  [run 3]
+496861892 iterations
+
+real	0m2.002s
+user	0m22.878s
+sys	0m0.044s
+
+--- glibc-thread [jemalloc] ---
+  [run 1]
+627735126 iterations
+
+real	0m2.002s
+user	0m23.003s
+sys	0m0.044s
+  [run 2]
+624153024 iterations
+
+real	0m2.002s
+user	0m22.902s
+sys	0m0.054s
+  [run 3]
+622401564 iterations
+
+real	0m2.002s
+user	0m22.942s
+sys	0m0.052s
+
+=== done ===

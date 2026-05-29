@@ -1,13 +1,11 @@
 #pragma once
 
-#include <cstddef>
+#include <atomic>
 
 #if defined(PALLOC_SINGLE_THREADED)
 
-// Drop-in replacement for std::atomic<T> that compiles to plain loads/stores
-// when the library is built in single-threaded mode. Eliminates LOCK-prefixed
-// instructions (LOCK XADD, LOCK CMPXCHG, etc.) that cost ~15-20 cycles each.
-#include <atomic> // only for std::memory_order (enum, zero cost)
+// lightweight atomic wrapper - compiles to plain loads/stores under PALLOC_SINGLE_THREADED
+// eliminates all LOCK-prefixed instructions
 
 namespace AL
 {
@@ -17,7 +15,8 @@ struct palloc_atomic
     T value;
 
     palloc_atomic() noexcept = default;
-    constexpr palloc_atomic(T v) noexcept : value(v) {}
+    constexpr palloc_atomic(T v) noexcept : value(v)
+    {}
 
     T load([[maybe_unused]] std::memory_order order = std::memory_order_seq_cst) const noexcept
     {
@@ -43,21 +42,46 @@ struct palloc_atomic
         return old;
     }
 
+    T fetch_and(T v, [[maybe_unused]] std::memory_order order = std::memory_order_seq_cst) noexcept
+    {
+        T old = value;
+        value &= v;
+        return old;
+    }
+
+    T fetch_or(T v, [[maybe_unused]] std::memory_order order = std::memory_order_seq_cst) noexcept
+    {
+        T old = value;
+        value |= v;
+        return old;
+    }
+
+    bool compare_exchange_weak(T& expected,
+                               T desired,
+                               [[maybe_unused]] std::memory_order success = std::memory_order_seq_cst,
+                               [[maybe_unused]] std::memory_order failure = std::memory_order_seq_cst) noexcept
+    {
+        if (value == expected)
+        {
+            value = desired;
+            return true;
+        }
+        expected = value;
+        return false;
+    }
+
     palloc_atomic& operator=(T v) noexcept
     {
         value = v;
         return *this;
     }
 
-    // prevent copy/move (mirrors std::atomic)
     palloc_atomic(const palloc_atomic&) = delete;
     palloc_atomic& operator=(const palloc_atomic&) = delete;
 };
 } // namespace AL
 
 #else
-
-#include <atomic>
 
 namespace AL
 {

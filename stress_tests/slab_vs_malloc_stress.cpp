@@ -58,7 +58,7 @@ int main()
                             size = 64;
                     }
 
-                    void* ptr = s.alloc(size);
+                    void* ptr = s.palloc(size);
                     if (ptr == nullptr)
                     {
                         std::cerr << "ERROR: Slab allocation failed at cycle " << cycle << ", iteration " << i << ", size " << size << '\n';
@@ -73,10 +73,6 @@ int main()
                     s.free(ptr, size);
                 }
 
-                if ((cycle + 1) % 2500 == 0)
-                {
-                    std::cout << "  Progress: " << (cycle + 1) << "/" << MIXED_CYCLES << '\n';
-                }
             }
 
             auto end = std::chrono::high_resolution_clock::now();
@@ -136,10 +132,6 @@ int main()
                     free(ptr);
                 }
 
-                if ((cycle + 1) % 2500 == 0)
-                {
-                    std::cout << "  Progress: " << (cycle + 1) << "/" << MIXED_CYCLES << '\n';
-                }
             }
 
             auto end = std::chrono::high_resolution_clock::now();
@@ -173,7 +165,7 @@ int main()
 
             for (int i = 0; i < RAPID_OPS; ++i)
             {
-                void* ptr = s.alloc(64);
+                void* ptr = s.palloc(64);
                 if (ptr == nullptr)
                 {
                     std::cerr << "ERROR: Slab allocation failed at iteration " << i << '\n';
@@ -181,10 +173,6 @@ int main()
                 }
                 s.free(ptr, 64);
 
-                if ((i + 1) % 250000 == 0)
-                {
-                    std::cout << "  Progress: " << (i + 1) << "/" << RAPID_OPS << '\n';
-                }
             }
 
             auto end = std::chrono::high_resolution_clock::now();
@@ -213,10 +201,6 @@ int main()
                 }
                 free(ptr);
 
-                if ((i + 1) % 250000 == 0)
-                {
-                    std::cout << "  Progress: " << (i + 1) << "/" << RAPID_OPS << '\n';
-                }
             }
 
             auto end = std::chrono::high_resolution_clock::now();
@@ -251,7 +235,7 @@ int main()
             for (int i = 0; i < SMALL_OPS; ++i)
             {
                 size_t size = 8 + (i % 4) * 8; // 8, 16, 24, 32
-                void* ptr = s.alloc(size);
+                void* ptr = s.palloc(size);
                 if (ptr == nullptr)
                 {
                     std::cerr << "ERROR: Slab allocation failed at iteration " << i << ", size " << size << '\n';
@@ -259,10 +243,6 @@ int main()
                 }
                 s.free(ptr, size);
 
-                if ((i + 1) % 125000 == 0)
-                {
-                    std::cout << "  Progress: " << (i + 1) << "/" << SMALL_OPS << '\n';
-                }
             }
 
             auto end = std::chrono::high_resolution_clock::now();
@@ -292,10 +272,6 @@ int main()
                 }
                 free(ptr);
 
-                if ((i + 1) % 125000 == 0)
-                {
-                    std::cout << "  Progress: " << (i + 1) << "/" << SMALL_OPS << '\n';
-                }
             }
 
             auto end = std::chrono::high_resolution_clock::now();
@@ -355,7 +331,7 @@ int main()
                             size = 32;
                     }
 
-                    void* ptr = s.alloc(size);
+                    void* ptr = s.palloc(size);
                     if (ptr == nullptr)
                     {
                         std::cerr << "ERROR: Slab allocation failed at batch " << batch << ", iteration " << i << ", size " << size << '\n';
@@ -370,10 +346,6 @@ int main()
                     s.free(ptr, size);
                 }
 
-                if ((batch + 1) % 25 == 0)
-                {
-                    std::cout << "  Progress: " << (batch + 1) << "/" << BATCHES << '\n';
-                }
             }
 
             auto end = std::chrono::high_resolution_clock::now();
@@ -433,10 +405,6 @@ int main()
                     free(ptr);
                 }
 
-                if ((batch + 1) % 25 == 0)
-                {
-                    std::cout << "  Progress: " << (batch + 1) << "/" << BATCHES << '\n';
-                }
             }
 
             auto end = std::chrono::high_resolution_clock::now();

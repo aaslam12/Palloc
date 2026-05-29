@@ -5,7 +5,6 @@
 #include <cstddef>
 #include <cstring>
 #include <iostream>
-#include <mutex>
 
 namespace AL
 {
@@ -19,8 +18,7 @@ pool::pool(size_t block_size, size_t block_count) : pool()
     init(block_size, block_count);
 }
 
-pool::pool(pool&& other) noexcept
-    : m_region(other.m_region), m_region_size(other.m_region_size), m_view(other.m_view), m_free_count(other.m_free_count.load())
+pool::pool(pool&& other) noexcept : m_region(other.m_region), m_region_size(other.m_region_size), m_view(std::move(other.m_view))
 {
     other.clear();
 }
@@ -35,8 +33,7 @@ pool& pool::operator=(pool&& other) noexcept
 
     m_region = other.m_region;
     m_region_size = other.m_region_size;
-    m_view = other.m_view;
-    m_free_count.store(other.m_free_count.load());
+    m_view = std::move(other.m_view);
 
     other.clear();
     return *this;
@@ -67,17 +64,6 @@ void pool::init(size_t block_size, size_t block_count)
 
     m_region = static_cast<std::byte*>(ptr);
     m_view.init_from_region(m_region, block_size, block_count);
-    m_free_count.store(block_count, std::memory_order_relaxed);
-}
-
-void pool::init_from_region(void* base, size_t block_size, size_t block_count)
-{
-    assert(!m_view.is_initialized() && "pool likely already initialized");
-    assert(m_region == nullptr && "pool already owns memory");
-
-    // non-owning: m_region stays nullptr so destructor won't munmap
-    m_view.init_from_region(base, block_size, block_count);
-    m_free_count.store(block_count, std::memory_order_relaxed);
 }
 
 pool::~pool()
@@ -97,33 +83,32 @@ pool::~pool()
 
 void* pool::alloc()
 {
-    std::lock_guard<pool_mutex> lock(m_mutex);
     check_asserts();
 
     void* ptr = m_view.alloc();
-    if (ptr != nullptr)
-        m_free_count.store(m_view.free_count(), std::memory_order_relaxed);
     return ptr;
 }
 
 size_t pool::alloc_batched_internal(size_t num_objects, void* out[])
 {
-    std::lock_guard<pool_mutex> lock(m_mutex);
     if (!out)
         return 0;
 
     check_asserts();
 
-    size_t i = 0;
-    for (; i < num_objects; ++i)
-    {
-        void* ptr = m_view.alloc();
-        if (ptr == nullptr)
-            break;
-        out[i] = ptr;
-    }
-    m_free_count.store(m_view.free_count(), std::memory_order_relaxed);
-    return i;
+    size_t n = m_view.alloc_batch(num_objects, out);
+    return n;
+}
+
+void pool::free_batched_internal(size_t num_objects, void* in[])
+{
+    if (!in)
+        return;
+
+    check_asserts();
+
+    std::span<void*> s(in, num_objects);
+    m_view.free_batch(s);
 }
 
 void* pool::calloc()
@@ -136,10 +121,8 @@ void* pool::calloc()
 
 void pool::reset()
 {
-    std::lock_guard<pool_mutex> lock(m_mutex);
     check_asserts();
     m_view.reset();
-    m_free_count.store(m_view.block_count(), std::memory_order_relaxed);
 }
 
 void pool::clear()
@@ -147,7 +130,6 @@ void pool::clear()
     m_region = nullptr;
     m_region_size = 0;
     m_view = pool_view{};
-    m_free_count.store(0, std::memory_order_relaxed);
 }
 
 bool pool::owns(void* ptr) const
@@ -157,7 +139,6 @@ bool pool::owns(void* ptr) const
 
 void pool::free(void* ptr)
 {
-    std::lock_guard<pool_mutex> lock(m_mutex);
     if (ptr == nullptr)
         return;
 
@@ -165,32 +146,11 @@ void pool::free(void* ptr)
     assert(owns(ptr) && "Pointer does not belong to this pool");
 
     m_view.free(ptr);
-    m_free_count.store(m_view.free_count(), std::memory_order_relaxed);
-}
-
-void pool::free_batched_internal(size_t num_objects, void* in[])
-{
-    std::lock_guard<pool_mutex> lock(m_mutex);
-    if (!in)
-        return;
-
-    check_asserts();
-
-    for (size_t i = 0; i < num_objects; ++i)
-    {
-        if (!in[i])
-            continue;
-
-        assert(owns(in[i]) && "Pointer does not belong to this pool");
-        m_view.free(in[i]);
-    }
-    
-    m_free_count.store(m_view.free_count(), std::memory_order_relaxed);
 }
 
 size_t pool::get_free_space() const
 {
-    return m_free_count.load(std::memory_order_relaxed) * m_view.block_size();
+    return m_view.free_count() * m_view.block_size();
 }
 
 size_t pool::get_capacity() const

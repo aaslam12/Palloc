@@ -36,7 +36,7 @@ int main()
             for (int i = 0; i < ALLOCS_PER_CYCLE; ++i)
             {
                 size_t size = (i % 4 == 0) ? 32 : (i % 4 == 1) ? 64 : (i % 4 == 2) ? 128 : 256;
-                void* ptr = s.alloc(size);
+                void* ptr = s.palloc(size);
                 if (ptr == nullptr)
                 {
                     std::cerr << "ERROR: Failed to allocate " << size << " bytes at cycle " << cycle << ", iteration " << i << '\n';
@@ -49,11 +49,6 @@ int main()
             for (auto& [ptr, size] : ptrs)
                 s.free(ptr, size);
 
-            // Progress indicator
-            if ((cycle + 1) % 2500 == 0)
-            {
-                std::cout << "  Progress: " << (cycle + 1) << "/" << NUM_CYCLES << " cycles completed" << '\n';
-            }
         }
 
         auto end = std::chrono::high_resolution_clock::now();
@@ -96,7 +91,7 @@ int main()
 
         for (int i = 0; i < RAPID_CYCLES; ++i)
         {
-            void* ptr = s.alloc(64);
+            void* ptr = s.palloc(64);
             if (ptr == nullptr)
             {
                 std::cerr << "ERROR: Failed to allocate at iteration " << i << '\n';
@@ -104,11 +99,6 @@ int main()
             }
             s.free(ptr, 64);
 
-            // Progress indicator
-            if ((i + 1) % 200000 == 0)
-            {
-                std::cout << "  Progress: " << (i + 1) << "/" << RAPID_CYCLES << " cycles completed" << '\n';
-            }
         }
 
         auto end = std::chrono::high_resolution_clock::now();

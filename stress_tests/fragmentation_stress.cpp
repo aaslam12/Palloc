@@ -12,10 +12,11 @@
 //   - RSS vs live data (fragmentation ratio)
 //
 // Only allocators that handle variable-size individual free are tested:
-//   Dynamic Slab, jemalloc, malloc
+//   Slab, Dynamic Slab, jemalloc, malloc
 // ═══════════════════════════════════════════════════════════════════════════════
 
 #include "dynamic_slab.h"
+#include "slab.h"
 
 #include <jemalloc/jemalloc.h>
 
@@ -39,7 +40,9 @@ inline void clobber() { asm volatile("" : : : "memory"); }
 
 static constexpr int DURATION_SECS = 10;
 static constexpr size_t NUM_SLOTS = 50'000;
-static constexpr size_t LATENCY_CAPACITY = 2'000'000;
+static constexpr size_t LATENCY_CAPACITY = 262'144;
+static constexpr size_t LATENCY_SAMPLE_MASK = 1023; // sample every 1024 ops
+static constexpr size_t DEADLINE_CHECK_MASK = 1023; // check time every 1024 ops
 
 // Size classes that match realistic object sizes
 static constexpr size_t SIZES[] = {16, 32, 64, 128, 256, 512};
@@ -152,9 +155,12 @@ BenchResult run_fragmentation(const char* name, AllocFn alloc_fn, FreeFn free_fn
     auto start = Clock::now();
     auto deadline = start + std::chrono::seconds(DURATION_SECS);
 
-    while (Clock::now() < deadline)
+    for (;;)
     {
-        bool sample = (ops & 127) == 0;
+        if ((ops & DEADLINE_CHECK_MASK) == 0 && Clock::now() >= deadline)
+            break;
+
+        bool sample = (ops & LATENCY_SAMPLE_MASK) == 0;
         auto t0 = sample ? Clock::now() : Clock::time_point{};
 
         size_t slot_idx = slot_dist(rng);
@@ -248,6 +254,15 @@ int main()
     printf("╚══════════════════════════════════════════════════════════════╝\n");
 
     std::vector<BenchResult> results;
+
+    // Slab (growable)
+    {
+        default_slab s{};
+        results.push_back(run_fragmentation(
+            "Slab (TLC)",
+            [&](size_t sz) -> void* { return s.palloc(sz); },
+            [&](void* p, size_t sz) { s.free(p, sz); }));
+    }
 
     // Dynamic Slab
     {

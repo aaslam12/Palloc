@@ -2,134 +2,22 @@
 
 #include "palloc_atomic.h"
 #include "platform.h"
-#include "pool.h"
-#include <array>
-#include <bit>
+#include "pool_view.h"
+#include "slab_config.h"
 #include <cassert>
 #include <cstddef>
+#include <cstdint>
 #include <cstring>
-#include <limits>
 #include <new>
+#include <span>
+#include <stdexcept>
 
 namespace AL
 {
 
-struct size_class
-{
-    std::size_t byte_size;
-    std::size_t num_blocks;
-    std::size_t batch_size;
-};
-
-constexpr bool is_power_of_two(std::size_t x) noexcept
-{
-    return x && ((x & (x - 1)) == 0);
-}
-
-consteval bool is_valid_config(const auto& arr) noexcept
-{
-    std::size_t prev_size = 0;
-    for (std::size_t i = 0; i < arr.size(); ++i)
-    {
-        auto const& sc = arr[i];
-        if (sc.byte_size == 0)
-            return false;
-        if (!is_power_of_two(sc.byte_size))
-            return false;
-        if (sc.num_blocks == 0)
-            return false;
-        if (sc.batch_size == 0)
-            return false;
-        if (sc.batch_size > sc.num_blocks)
-            return false;
-        if (i > 0 && sc.byte_size <= prev_size)
-            return false;
-        if (sc.num_blocks > (std::numeric_limits<std::size_t>::max() / sc.byte_size))
-            return false;
-        prev_size = sc.byte_size;
-    }
-    return true;
-}
-
-template<std::size_t Tnum = 10,
-         std::array<size_class, Tnum> Tsize_class_config =
-             {
-                 size_class{   .byte_size = 8, .num_blocks = 512, .batch_size = 64},
-                 size_class{  .byte_size = 16, .num_blocks = 512, .batch_size = 64},
-                 size_class{  .byte_size = 32, .num_blocks = 256, .batch_size = 32},
-                 size_class{  .byte_size = 64, .num_blocks = 256, .batch_size = 32},
-                 size_class{ .byte_size = 128, .num_blocks = 128, .batch_size = 16},
-                 size_class{ .byte_size = 256, .num_blocks = 128, .batch_size = 16},
-                 size_class{ .byte_size = 512,  .num_blocks = 64,  .batch_size = 8},
-                 size_class{.byte_size = 1024,  .num_blocks = 64,  .batch_size = 8},
-                 size_class{.byte_size = 2048,  .num_blocks = 32,  .batch_size = 4},
-                 size_class{.byte_size = 4096,  .num_blocks = 32,  .batch_size = 4}
-},
-         std::size_t Tnum_cached_classes = Tnum>
-struct slab_config
-{
-    static_assert(Tnum_cached_classes <= Tnum, "NUM_CACHED_CLASSES must be <= total size-class count");
-
-    static_assert(Tnum > 0, "at least one size class required");
-    static_assert(is_valid_config(Tsize_class_config),
-                  "Invalid SIZE_CLASS_CONFIG: power-of-two, strictly increasing sizes, non-zero counts required");
-
-    inline static constexpr std::array<size_class, Tnum> SIZE_CLASS_CONFIG = Tsize_class_config;
-    static constexpr std::size_t NUM_SIZE_CLASSES = Tnum;
-    static constexpr std::size_t NUM_CACHED_CLASSES = Tnum_cached_classes;
-
-    static constexpr std::size_t INDEX_SPAN =
-        std::bit_width(Tsize_class_config[Tnum - 1].byte_size) -
-        std::bit_width(Tsize_class_config[0].byte_size) + 1;
-
-    // gaps in the config round up to the next available size class.
-    // e.g. in config {8,64}: sizes 9-64 all go to 64B pool.
-    static consteval auto compute_index_lut()
-    {
-        std::array<std::size_t, INDEX_SPAN> lut{};
-        std::size_t min_bw = std::bit_width(Tsize_class_config[0].byte_size);
-        for (std::size_t vi = 0; vi < INDEX_SPAN; ++vi)
-        {
-            std::size_t target_size = std::size_t(1) << (min_bw + vi - 1);
-            lut[vi] = static_cast<std::size_t>(-1);
-            for (std::size_t j = 0; j < Tnum; ++j)
-            {
-                if (Tsize_class_config[j].byte_size >= target_size)
-                {
-                    lut[vi] = j;
-                    break;
-                }
-            }
-        }
-        return lut;
-    }
-
-    inline static constexpr auto INDEX_LUT = compute_index_lut();
-
-    // compute total bytes needed for all pools' sub-regions (with alignment padding).
-    // assumes page-aligned base (mmap), so first pool always starts aligned.
-    static constexpr std::size_t compute_total_region_size()
-    {
-        std::size_t total = 0;
-        for (std::size_t i = 0; i < Tnum; ++i)
-        {
-            auto const& sc = Tsize_class_config[i];
-            // align cursor to block_size
-            std::size_t mask = sc.byte_size - 1;
-            total = (total + mask) & ~mask;
-            // add region for this pool
-            std::size_t bitmap_words = (sc.num_blocks + 63) / 64;
-            std::size_t bitmap_bytes = bitmap_words * sizeof(uint64_t);
-            std::size_t aligned_offset = ((bitmap_bytes + sc.byte_size - 1) / sc.byte_size) * sc.byte_size;
-            total += aligned_offset + sc.byte_size * sc.num_blocks;
-        }
-        return total;
-    }
-};
-
 struct thread_local_cache
 {
-    // max capacity — actual batch sizes are tuned per size class
+    // max capacity - actual batch sizes are tuned per size class
     static constexpr size_t object_count = 128;
 
     std::array<void*, object_count> objects;
@@ -169,11 +57,10 @@ struct thread_local_cache
     }
 };
 
-template<typename Tconfig>
+template<slab_config_type Tconfig>
 class slab
 {
 public:
-    // scale is multiplied by the default number of blocks to allocate
     slab();
     ~slab();
 
@@ -184,17 +71,19 @@ public:
 
     // returns: nullptr if failed, else the memory address of the block of memory
     // returns memory is properly aligned
-    [[nodiscard]] void* alloc(size_t size);
+    [[nodiscard]] void* palloc(size_t size);
 
     // returns: nullptr if failed, else the memory address of the block of memory
     // returns memory is properly aligned
     [[nodiscard]] void* calloc(size_t size);
 
     // NOT thread safe
-    // returns: -1 if failed
     void reset();
 
-    // returns: -1 if failed
+    // decommits physical pages for all empty grown chunks across all pools
+    // NOT thread-safe
+    void shrink() noexcept;
+
     void free(void* ptr, size_t size);
 
     // returns true if freed successfully, false if not owned by this slab
@@ -206,12 +95,22 @@ public:
     size_t get_pool_block_size(size_t index) const;
     size_t get_pool_free_space(size_t index) const;
 
+#if PALLOC_DEBUG
+    size_t get_num_comitted_blocks() const;
+#endif
+
     // check if pointer belongs to this slab
     bool owns(void* ptr) const;
 
     // get the contiguous memory region backing all pools
-    std::byte* region_start() const { return m_region; }
-    std::byte* region_end() const { return m_region + m_region_size; }
+    std::byte* region_start() const
+    {
+        return m_region;
+    }
+    std::byte* region_end() const
+    {
+        return m_region + m_region_size;
+    }
 
     static constexpr size_t size_to_index(size_t size)
     {
@@ -232,7 +131,7 @@ public:
     }
 
 private:
-    constexpr static size_t MAX_CACHED_SLABS = 4;
+    [[nodiscard]] void* alloc_internal(size_t size);
 
     struct cache_entry
     {
@@ -243,16 +142,16 @@ private:
         void flush()
         {
             if (!owner)
-                return; // should we assert?
+                return;
 
             for (size_t i = 0; i < Tconfig::NUM_CACHED_CLASSES; i++)
             {
-                // move pointers to appropriate pool from storage?
+                // flush cached pointers back to the corresponding pool_view
                 auto& cache = storage[i];
                 if (cache.is_empty())
                     continue;
 
-                owner->shared_pools[i].free_batched_internal(cache.current, cache.objects.data());
+                owner->shared_pools[i].free_batch(std::span<void*>(cache.objects.data(), cache.current));
                 cache.current = 0;
             }
         }
@@ -267,19 +166,16 @@ private:
         }
     };
 
-    inline thread_local static std::array<cache_entry, MAX_CACHED_SLABS> caches{};
-
-    cache_entry* get_cached_slab()
+    cache_entry* get_or_create_cache_entry()
     {
         assert(MAX_CACHED_SLABS != 0 && "Cannot get cached slab. Number of cached slabs is 0");
 
-        // O(1) fast path: check the preferred hash slot first
+        // check the preferred slot first
         const size_t preferred = slab_id % MAX_CACHED_SLABS;
         if (caches[preferred].owner == this)
             return &caches[preferred];
 
-        // Scan for an existing entry for this slab, or the first empty slot.
-        // Slabs with colliding hash IDs will land in different slots when space is available.
+        // scan for an existing entry for this slab, or the first empty slot.
         size_t empty_slot = caches[preferred].owner == nullptr ? preferred : (size_t)-1;
         for (size_t i = 0; i < MAX_CACHED_SLABS; ++i)
         {
@@ -291,7 +187,7 @@ private:
                 empty_slot = i;
         }
 
-        // Claim an empty slot (prefer the hash slot to keep affinity for next time)
+        // found empty slot
         if (empty_slot != (size_t)-1)
         {
             cache_entry& entry = caches[empty_slot];
@@ -301,10 +197,8 @@ private:
             return &entry;
         }
 
-        // All slots occupied by other slabs.
-        // Evict the last slot (not the preferred one) so that slabs whose preferred
-        // slots are 0..MAX_CACHED_SLABS-2 remain stable across round-robin cycling.
-        // This mirrors LRU-ish eviction: the last slot acts as the "victim" slot.
+        // all slots are occupied by other slabs.
+        // evict a fixed victim slot (the last slot) and reuse it for this slab
         cache_entry& entry = caches[MAX_CACHED_SLABS - 1];
         entry.flush();
         entry.owner = this;
@@ -319,46 +213,107 @@ private:
             entry.storage[i].batch_size = Tconfig::SIZE_CLASS_CONFIG[i].batch_size;
     }
 
+    // used for TLC
+    constexpr static size_t MAX_CACHED_SLABS = Tconfig::NUM_CACHED_SLABS;
+
+    inline thread_local static std::array<cache_entry, MAX_CACHED_SLABS> caches{};
+
     palloc_atomic<size_t> epoch;
-    std::array<pool, Tconfig::NUM_SIZE_CLASSES> shared_pools;
+    std::array<pool_view, Tconfig::NUM_SIZE_CLASSES> shared_pools;
 
     std::byte* m_region = nullptr;
     size_t m_region_size = 0;
 
+    // base address of each pool's payload sub-region
+    std::array<std::byte*, Tconfig::NUM_SIZE_CLASSES> m_pool_bases{};
+    std::array<palloc_atomic<bool>, Tconfig::NUM_SIZE_CLASSES> m_initial_committed{};
+
+    // flat bitmap per pool: covers all virtual_block_ceiling blocks, committed upfront
+    std::array<palloc_atomic<uint64_t>*, Tconfig::NUM_SIZE_CLASSES> m_pool_bitmaps{};
+    std::array<size_t, Tconfig::NUM_SIZE_CLASSES> m_pool_bitmap_bytes{};
+
     inline static palloc_atomic<size_t> next_slab_id{0};
     size_t slab_id;
+
+    void grow_pool(size_t index) noexcept;
+    bool ensure_initial_commit(size_t index) noexcept;
+    void decommit_chunk(size_t index, size_t chunk_idx) noexcept;
 };
 
-template<typename Tconfig>
+template<slab_config_type Tconfig>
 slab<Tconfig>::slab() : epoch(0), slab_id(next_slab_id.fetch_add(1, std::memory_order_relaxed))
 {
-    constexpr size_t raw_size = Tconfig::compute_total_region_size();
     size_t page_size = AL::platform_mem::page_size();
-    m_region_size = ((raw_size + page_size - 1) / page_size) * page_size;
 
-    void* mem = AL::platform_mem::alloc(m_region_size);
+    // compute total virtual region size: sum of page-rounded payload per pool
+    size_t layout_size = 0;
+    for (size_t i = 0; i < Tconfig::NUM_SIZE_CLASSES; ++i)
+    {
+        auto const& sc = Tconfig::SIZE_CLASS_CONFIG[i];
+        size_t mask = sc.byte_size - 1;
+        layout_size = (layout_size + mask) & ~mask; // align to block_size
+        size_t pool_bytes = sc.byte_size * Tconfig::VIRTUAL_BLOCK_CEILINGS[i];
+        layout_size += ((pool_bytes + page_size - 1) / page_size) * page_size;
+    }
+    size_t desired = Tconfig::VIRTUAL_MEM_PREALLOC_SIZE;
+    if (layout_size > desired)
+        desired = layout_size;
+    m_region_size = desired;
+
+    // reserve virtual address space for all payloads (no physical pages yet)
+    void* mem = AL::platform_mem::virtual_alloc(m_region_size);
     if (mem == nullptr)
-        throw std::bad_alloc();
-
+        throw std::runtime_error("slab virtual_alloc failed");
     m_region = static_cast<std::byte*>(mem);
 
-    // carve sub-regions for each pool
+    for (auto& committed : m_initial_committed)
+        committed.store(false, std::memory_order_relaxed);
+
     std::byte* cursor = m_region;
     for (size_t i = 0; i < Tconfig::NUM_SIZE_CLASSES; ++i)
     {
-        auto& sc = Tconfig::SIZE_CLASS_CONFIG[i];
-        // align cursor to block_size
-        auto addr = reinterpret_cast<uintptr_t>(cursor);
-        uintptr_t mask = sc.byte_size - 1;
-        addr = (addr + mask) & ~mask;
-        cursor = reinterpret_cast<std::byte*>(addr);
+        auto const& sc = Tconfig::SIZE_CLASS_CONFIG[i];
 
-        shared_pools[i].init_from_region(cursor, sc.byte_size, sc.num_blocks);
-        cursor += pool_view::required_region_size(sc.byte_size, sc.num_blocks);
+        // align cursor to block_size
+        uintptr_t addr = reinterpret_cast<uintptr_t>(cursor);
+        addr   = (addr + sc.byte_size - 1) & ~(sc.byte_size - 1);
+        cursor = reinterpret_cast<std::byte*>(addr);
+        m_pool_bases[i] = cursor;
+
+        size_t ceiling    = Tconfig::VIRTUAL_BLOCK_CEILINGS[i];
+        size_t chunk_size = sc.num_blocks;
+
+        // allocate and zero the full flat bitmap (covers all ceiling blocks)
+        size_t bmap_bytes = pool_view::bitmap_bytes_for(ceiling);
+        auto*  bmap       = static_cast<palloc_atomic<uint64_t>*>(AL::platform_mem::alloc(bmap_bytes));
+        if (!bmap)
+        {
+            for (size_t j = 0; j < i; ++j)
+                AL::platform_mem::free(m_pool_bitmaps[j], m_pool_bitmap_bytes[j]);
+            AL::platform_mem::free(mem, m_region_size);
+            throw std::bad_alloc();
+        }
+        std::memset(bmap, 0, bmap_bytes);
+
+        // mark tail bits of the last word as used (blocks beyond ceiling don't exist)
+        size_t tail = ceiling % 64;
+        if (tail)
+        {
+            size_t last_word = (ceiling - 1) / 64;
+            bmap[last_word].store(~uint64_t(0) << tail, std::memory_order_relaxed);
+        }
+
+        m_pool_bitmaps[i]      = bmap;
+        m_pool_bitmap_bytes[i] = bmap_bytes;
+
+        shared_pools[i].init_from_region(cursor, bmap, sc.byte_size, chunk_size, ceiling, chunk_size);
+
+        size_t pool_bytes = sc.byte_size * ceiling;
+        cursor += ((pool_bytes + page_size - 1) / page_size) * page_size;
     }
 }
 
-template<typename Tconfig>
+template<slab_config_type Tconfig>
 slab<Tconfig>::~slab()
 {
     // invalidate TLC entries for this slab
@@ -383,16 +338,23 @@ slab<Tconfig>::~slab()
         }
     }
 
-    // munmap the single contiguous region (pools are non-owning, their destructors are no-ops)
+    // munmap the single contiguous region backing all pool_views
     if (m_region != nullptr)
     {
         AL::platform_mem::free(m_region, m_region_size);
         m_region = nullptr;
     }
+
+    // free all flat bitmaps
+    for (size_t i = 0; i < Tconfig::NUM_SIZE_CLASSES; ++i)
+    {
+        if (m_pool_bitmaps[i])
+            AL::platform_mem::free(m_pool_bitmaps[i], m_pool_bitmap_bytes[i]);
+    }
 }
 
-template<typename Tconfig>
-void* slab<Tconfig>::alloc(size_t size)
+template<slab_config_type Tconfig>
+void* slab<Tconfig>::palloc(size_t size)
 {
     if (size == 0 || size == (size_t)-1) [[unlikely]]
         return nullptr;
@@ -400,14 +362,93 @@ void* slab<Tconfig>::alloc(size_t size)
         return nullptr;
 
     size_t index = size_to_index(size);
+    if (index == static_cast<size_t>(-1)) [[unlikely]]
+        return nullptr;
+
+    void* ptr = alloc_internal(size);
+    if (ptr != nullptr) [[likely]]
+        return ptr;
+
+    // pool exhausted - attempt to grow
+    grow_pool(index);
+    return alloc_internal(size);
+}
+
+template<slab_config_type Tconfig>
+void slab<Tconfig>::grow_pool(size_t index) noexcept
+{
+    if (!ensure_initial_commit(index)) [[unlikely]]
+        return;
+
+    pool_view& p = shared_pools[index];
+    if (p.committed_blocks() >= p.virtual_block_ceiling())
+        return;
+
+    size_t old = 0;
+    if (!p.try_reserve_chunk(old))
+        return; // another thread won the CAS
+
+    size_t block_size   = Tconfig::SIZE_CLASS_CONFIG[index].byte_size;
+    size_t chunk_blocks = p.blocks_per_chunk();
+
+    // commit payload pages — flat bitmap words are already zeroed from construction
+    std::byte* chunk_base = m_pool_bases[index] + old * block_size;
+    AL::platform_mem::virtual_commit(chunk_base, chunk_blocks * block_size);
+
+    p.advance_committed(old + chunk_blocks);
+}
+
+template<slab_config_type Tconfig>
+bool slab<Tconfig>::ensure_initial_commit(size_t index) noexcept
+{
+    if (m_initial_committed[index].load(std::memory_order_acquire))
+        return true;
+
+    size_t block_size   = Tconfig::SIZE_CLASS_CONFIG[index].byte_size;
+    size_t chunk_blocks = Tconfig::SIZE_CLASS_CONFIG[index].num_blocks;
+    size_t page_size    = AL::platform_mem::page_size();
+    size_t commit_bytes = ((block_size * chunk_blocks + page_size - 1) / page_size) * page_size;
+
+    if (!AL::platform_mem::virtual_commit(m_pool_bases[index], commit_bytes))
+        return false;
+
+    m_initial_committed[index].store(true, std::memory_order_release);
+    return true;
+}
+
+template<slab_config_type Tconfig>
+void slab<Tconfig>::decommit_chunk(size_t index, size_t chunk_idx) noexcept
+{
+    pool_view& p = shared_pools[index];
+    size_t block_size   = Tconfig::SIZE_CLASS_CONFIG[index].byte_size;
+    size_t chunk_blocks = p.blocks_per_chunk();
+
+    // decommit payload pages
+    std::byte* chunk_base = m_pool_bases[index] + chunk_idx * chunk_blocks * block_size;
+    AL::platform_mem::virtual_free(chunk_base, chunk_blocks * block_size);
+
+    // zero bitmap words for this chunk so they're ready if re-committed
+    size_t word_start = (chunk_idx * chunk_blocks) / 64;
+    size_t word_end   = ((chunk_idx + 1) * chunk_blocks + 63) / 64;
+    for (size_t w = word_start; w < word_end; ++w)
+        m_pool_bitmaps[index][w].store(0, std::memory_order_relaxed);
+}
+
+template<slab_config_type Tconfig>
+void* slab<Tconfig>::alloc_internal(size_t size)
+{
+    size_t index = size_to_index(size);
     if (index == (size_t)-1) [[unlikely]]
         return nullptr;
 
-    pool& p = shared_pools[index];
+    pool_view& p = shared_pools[index];
+    if (!ensure_initial_commit(index)) [[unlikely]]
+        return nullptr;
 
+    // if is part of the TLC
     if (index < Tconfig::NUM_CACHED_CLASSES) [[likely]]
     {
-        auto cached_entry = get_cached_slab();
+        cache_entry* cached_entry = get_or_create_cache_entry();
         thread_local_cache& cache = cached_entry->storage[index];
         size_t current_epoch = epoch.load(std::memory_order_acquire);
         if (cached_entry->epoch != current_epoch) [[unlikely]]
@@ -419,7 +460,7 @@ void* slab<Tconfig>::alloc(size_t size)
         if (auto elem = cache.try_pop()) [[likely]]
             return elem;
 
-        size_t num_allocated = p.alloc_batched_internal(cache.batch_size, cache.objects.data());
+        size_t num_allocated = p.alloc_batch(cache.batch_size, cache.objects.data());
         cache.current = num_allocated;
         return cache.try_pop();
     }
@@ -429,10 +470,10 @@ void* slab<Tconfig>::alloc(size_t size)
     }
 }
 
-template<typename Tconfig>
+template<slab_config_type Tconfig>
 void* slab<Tconfig>::calloc(size_t size)
 {
-    void* ptr = alloc(size);
+    void* ptr = palloc(size);
     if (ptr != nullptr)
     {
         size_t actual_size = Tconfig::SIZE_CLASS_CONFIG[size_to_index(size)].byte_size;
@@ -441,7 +482,7 @@ void* slab<Tconfig>::calloc(size_t size)
     return ptr;
 }
 
-template<typename Tconfig>
+template<slab_config_type Tconfig>
 void slab<Tconfig>::reset()
 {
     for (auto& p : shared_pools)
@@ -449,7 +490,37 @@ void slab<Tconfig>::reset()
     epoch.fetch_add(1, std::memory_order_release);
 }
 
-template<typename Tconfig>
+template<slab_config_type Tconfig>
+void slab<Tconfig>::shrink() noexcept
+{
+    for (size_t i = 0; i < Tconfig::NUM_SIZE_CLASSES; ++i)
+    {
+        pool_view& p = shared_pools[i];
+        size_t committed = p.committed_blocks();
+        size_t chunk_size = p.blocks_per_chunk();
+
+        if (committed <= chunk_size)
+            continue; // only the initial chunk - nothing grown to decommit
+
+        size_t num_chunks = committed / chunk_size;
+
+        // scan grown chunks top-down (skip chunk 0 = initial commit)
+        // find the highest contiguous run of empty chunks and trim committed_blocks
+        size_t new_committed = committed;
+        for (size_t c = num_chunks; c-- > 1;)
+        {
+            if (!p.is_chunk_empty(c))
+                break; // stop at first non-empty chunk from the top
+            decommit_chunk(i, c);
+            new_committed = c * chunk_size;
+        }
+
+        if (new_committed < committed)
+            p.decommit_blocks(new_committed);
+    }
+}
+
+template<slab_config_type Tconfig>
 void slab<Tconfig>::free(void* ptr, size_t size)
 {
     if (size == 0 || size == (size_t)-1) [[unlikely]]
@@ -461,10 +532,10 @@ void slab<Tconfig>::free(void* ptr, size_t size)
     if (index == (size_t)-1) [[unlikely]]
         return;
 
-    pool& p = shared_pools[index];
+    pool_view& p = shared_pools[index];
     if (index < Tconfig::NUM_CACHED_CLASSES) [[likely]]
     {
-        auto cached_entry = get_cached_slab();
+        auto cached_entry = get_or_create_cache_entry();
         thread_local_cache& cache = cached_entry->storage[index];
         size_t current_epoch = epoch.load(std::memory_order_acquire);
         if (cached_entry->epoch != current_epoch) [[unlikely]]
@@ -475,7 +546,9 @@ void slab<Tconfig>::free(void* ptr, size_t size)
 
         if (cache.is_full()) [[unlikely]]
         {
-            p.free_batched_internal(cache.batch_size, cache.objects.data() + (cache.current - cache.batch_size));
+            // flush tail segment first, keep recent entries hot in TLC
+            auto flush_span = std::span<void*>(cache.objects.data() + (cache.current - cache.batch_size), cache.batch_size);
+            p.free_batch(flush_span);
             cache.current -= cache.batch_size;
         }
         cache.push(ptr);
@@ -486,17 +559,17 @@ void slab<Tconfig>::free(void* ptr, size_t size)
     }
 }
 
-template<typename Tconfig>
+template<slab_config_type Tconfig>
 bool slab<Tconfig>::free_unsized(void* ptr)
 {
     for (size_t i = 0; i < Tconfig::NUM_SIZE_CLASSES; ++i)
     {
-        pool& p = shared_pools[i];
+        pool_view& p = shared_pools[i];
         if (p.owns(ptr))
         {
             if (i < Tconfig::NUM_CACHED_CLASSES) [[likely]]
             {
-                auto cached_entry = get_cached_slab();
+                auto cached_entry = get_or_create_cache_entry();
                 thread_local_cache& cache = cached_entry->storage[i];
                 size_t current_epoch = epoch.load(std::memory_order_acquire);
                 if (cached_entry->epoch != current_epoch) [[unlikely]]
@@ -507,7 +580,8 @@ bool slab<Tconfig>::free_unsized(void* ptr)
 
                 if (cache.is_full()) [[unlikely]]
                 {
-                    p.free_batched_internal(cache.batch_size, cache.objects.data() + (cache.current - cache.batch_size));
+                    // flush tail segment first, keep recent entries hot in TLC
+                    p.free_batch(std::span<void*>(cache.objects.data() + (cache.current - cache.batch_size), cache.batch_size));
                     cache.current -= cache.batch_size;
                 }
                 cache.push(ptr);
@@ -522,47 +596,55 @@ bool slab<Tconfig>::free_unsized(void* ptr)
     return false;
 }
 
-template<typename Tconfig>
+template<slab_config_type Tconfig>
 size_t slab<Tconfig>::get_pool_count() const
 {
     return std::size(shared_pools);
 }
 
-template<typename Tconfig>
+template<slab_config_type Tconfig>
 size_t slab<Tconfig>::get_total_capacity() const
 {
     size_t total = 0;
     for (const auto& p : shared_pools)
-        total += p.get_capacity();
+        total += p.capacity();
     return total;
 }
 
-template<typename Tconfig>
+template<slab_config_type Tconfig>
 size_t slab<Tconfig>::get_total_free() const
 {
     size_t total = 0;
     for (const auto& p : shared_pools)
-        total += p.get_free_space();
+        total += p.free_count() * p.block_size();
     return total;
 }
 
-template<typename Tconfig>
+template<slab_config_type Tconfig>
 size_t slab<Tconfig>::get_pool_block_size(size_t index) const
 {
     if (index >= Tconfig::NUM_SIZE_CLASSES)
         return 0;
-    return shared_pools[index].get_block_size();
+    return shared_pools[index].block_size();
 }
 
-template<typename Tconfig>
+template<slab_config_type Tconfig>
 size_t slab<Tconfig>::get_pool_free_space(size_t index) const
 {
     if (index >= Tconfig::NUM_SIZE_CLASSES)
         return 0;
-    return shared_pools[index].get_free_space();
+    return shared_pools[index].free_count() * shared_pools[index].block_size();
 }
 
-template<typename Tconfig>
+#if PALLOC_DEBUG
+template<slab_config_type Tconfig>
+size_t slab<Tconfig>::get_num_comitted_blocks() const
+{
+    return 0;
+}
+#endif
+
+template<slab_config_type Tconfig>
 bool slab<Tconfig>::owns(void* ptr) const
 {
     for (const auto& p : shared_pools)

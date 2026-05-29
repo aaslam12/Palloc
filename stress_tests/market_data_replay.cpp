@@ -39,7 +39,9 @@ inline void clobber() { asm volatile("" : : : "memory"); }
 
 static constexpr int DURATION_SECS = 7;
 static constexpr size_t BATCH_SIZE = 200;
-static constexpr size_t LATENCY_CAPACITY = 2'000'000;
+static constexpr size_t LATENCY_CAPACITY = 262'144;
+static constexpr size_t BATCH_SAMPLE_MASK = 255;    // sample every 256 batches
+static constexpr size_t DEADLINE_CHECK_MASK = 63;   // check time every 64 batches
 
 // Message sizes matching slab size classes
 static constexpr size_t QUOTE_SIZE = 64;     // 60% of messages
@@ -288,9 +290,12 @@ int main()
         auto start = Clock::now();
         auto deadline = start + std::chrono::seconds(DURATION_SECS);
 
-        while (Clock::now() < deadline)
+        for (;;)
         {
-            bool sample = (batches & 15) == 0;
+            if ((batches & DEADLINE_CHECK_MASK) == 0 && Clock::now() >= deadline)
+                break;
+
+            bool sample = (batches & BATCH_SAMPLE_MASK) == 0;
             auto t0 = sample ? Clock::now() : Clock::time_point{};
 
             // Allocate and process entire batch
@@ -343,16 +348,19 @@ int main()
         auto start = Clock::now();
         auto deadline = start + std::chrono::seconds(DURATION_SECS);
 
-        while (Clock::now() < deadline)
+        for (;;)
         {
-            bool sample = (batches & 15) == 0;
+            if ((batches & DEADLINE_CHECK_MASK) == 0 && Clock::now() >= deadline)
+                break;
+
+            bool sample = (batches & BATCH_SAMPLE_MASK) == 0;
             auto t0 = sample ? Clock::now() : Clock::time_point{};
 
             size_t count = 0;
             for (size_t i = 0; i < BATCH_SIZE; i++)
             {
                 size_t sz = pick_msg_size(rng);
-                void* mem = s.alloc(sz);
+                void* mem = s.palloc(sz);
                 if (mem)
                 {
                     fill_and_process(mem, sz, seq++, stats);
@@ -395,9 +403,12 @@ int main()
         auto start = Clock::now();
         auto deadline = start + std::chrono::seconds(DURATION_SECS);
 
-        while (Clock::now() < deadline)
+        for (;;)
         {
-            bool sample = (batches & 15) == 0;
+            if ((batches & DEADLINE_CHECK_MASK) == 0 && Clock::now() >= deadline)
+                break;
+
+            bool sample = (batches & BATCH_SAMPLE_MASK) == 0;
             auto t0 = sample ? Clock::now() : Clock::time_point{};
 
             size_t count = 0;
@@ -446,9 +457,12 @@ int main()
         auto start = Clock::now();
         auto deadline = start + std::chrono::seconds(DURATION_SECS);
 
-        while (Clock::now() < deadline)
+        for (;;)
         {
-            bool sample = (batches & 15) == 0;
+            if ((batches & DEADLINE_CHECK_MASK) == 0 && Clock::now() >= deadline)
+                break;
+
+            bool sample = (batches & BATCH_SAMPLE_MASK) == 0;
             auto t0 = sample ? Clock::now() : Clock::time_point{};
 
             size_t count = 0;
@@ -497,9 +511,12 @@ int main()
         auto start = Clock::now();
         auto deadline = start + std::chrono::seconds(DURATION_SECS);
 
-        while (Clock::now() < deadline)
+        for (;;)
         {
-            bool sample = (batches & 15) == 0;
+            if ((batches & DEADLINE_CHECK_MASK) == 0 && Clock::now() >= deadline)
+                break;
+
+            bool sample = (batches & BATCH_SAMPLE_MASK) == 0;
             auto t0 = sample ? Clock::now() : Clock::time_point{};
 
             size_t count = 0;

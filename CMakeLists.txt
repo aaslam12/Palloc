@@ -12,6 +12,8 @@ option(PALLOC_STATIC_LINKING "Link libraries statically" OFF)
 option(PALLOC_ENABLE_SANITIZERS "Enable Address/Undefined sanitizers (only in Debug)" OFF)
 option(PALLOC_USE_CLANG_TIDY "Run clang-tidy during builds if available" OFF)
 option(PALLOC_SINGLE_THREADED "Disable allocator mutexes for single-threaded use" OFF)
+option(PALLOC_ENABLE_THP "Enable Transparent Huge Pages" ON)
+option(PALLOC_USE_2MB_HUGE_PAGES "Deterministic 2 MB Huge Pages" OFF)
 
 if(NOT CMAKE_BUILD_TYPE)
   set(CMAKE_BUILD_TYPE "Release" CACHE STRING "Choose the type of build." FORCE)
@@ -87,6 +89,14 @@ if(PALLOC_SINGLE_THREADED)
   target_compile_definitions(palloc PUBLIC PALLOC_SINGLE_THREADED)
 endif()
 
+if(PALLOC_ENABLE_THP)
+  target_compile_definitions(palloc PUBLIC PALLOC_ENABLE_THP)
+endif()
+
+if(PALLOC_USE_2MB_HUGE_PAGES)
+  target_compile_definitions(palloc PUBLIC PALLOC_USE_2MB_HUGE_PAGES)
+endif()
+
 if(CMAKE_BUILD_TYPE STREQUAL "Debug")
   target_compile_definitions(palloc PUBLIC PALLOC_DEBUG)
 else()
@@ -124,6 +134,9 @@ if(PALLOC_BUILD_TESTS AND NOT CMAKE_BUILD_TYPE STREQUAL "Release")
   if(TEST_SRCS)
     add_executable(tests ${TEST_SRCS})
     target_link_libraries(tests PRIVATE palloc Catch2::Catch2WithMain)
+    if(WIN32)
+      target_link_libraries(tests PRIVATE psapi)
+    endif()
     if(PALLOC_STATIC_LINKING)
       target_link_options(tests PRIVATE -static -static-libgcc -static-libstdc++)
     endif()
@@ -139,13 +152,24 @@ if(PALLOC_BUILD_STRESS_TESTS)
   find_library(JEMALLOC_LIB jemalloc)
   find_path(JEMALLOC_INCLUDE jemalloc/jemalloc.h)
 
+  # LD_PRELOAD shims
+  add_library(palloc_shim SHARED stress_tests/palloc_shim.cpp)
+  target_link_libraries(palloc_shim PRIVATE palloc dl)
+  set_target_properties(palloc_shim PROPERTIES
+    RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}"
+    LIBRARY_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}"
+  )
+
+
   file(GLOB STRESS_SRCS "stress_tests/*.cpp")
+  list(FILTER STRESS_SRCS EXCLUDE REGEX ".*/palloc_shim\\.cpp$")
   foreach(stress_src ${STRESS_SRCS})
     get_filename_component(test_name ${stress_src} NAME_WE)
     add_executable(${test_name} ${stress_src})
     set(JEMALLOC_STRESS_TESTS
       jemalloc_vs_palloc
       dynamic_slab_vs_jemalloc
+      slab_vs_jemalloc
       allocator_showdown
       order_book_sim
       market_data_replay

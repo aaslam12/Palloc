@@ -50,11 +50,6 @@ int main()
                 p.free(ptr);
             }
 
-            // Progress indicator
-            if ((cycle + 1) % 250 == 0)
-            {
-                std::cout << "  Progress: " << (cycle + 1) << "/" << NUM_CYCLES << " cycles completed" << '\n';
-            }
         }
 
         auto end = std::chrono::high_resolution_clock::now();
@@ -119,7 +114,6 @@ int main()
                 p.free(ptr);
             }
 
-            std::cout << "  Cycle " << (cycle + 1) << "/" << FULL_CYCLES << " completed" << '\n';
         }
 
         auto end = std::chrono::high_resolution_clock::now();
