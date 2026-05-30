@@ -1,0 +1,50 @@
+
+=== Pool Allocator Stress Test ===
+Pool configuration: 128 byte blocks, 1000000 blocks
+
+--- Test 1: Partial Pool Cycles ---
+Cycles:           1000
+Allocs per cycle: 50000 (50% of pool)
+
+[Test 1 Results]
+Total time:       1.246 s
+Total operations: 100000000 (alloc + free)
+Avg per op:       0.01246 us
+Ops per second:   8.02566e+07
+Sanity check:     PASSED (all blocks freed)
+[PASSED] Test 1: Partial pool cycles
+
+--- Test 2: Full Pool Exhaustion Cycles ---
+Cycles:           1000
+Allocs per cycle: 1000000 (100% of pool)
+
+[Test 2 Results]
+Total time:       25.9812 s
+Total operations: 2000000000 (alloc + free)
+Avg per op:       0.0129906 us
+Ops per second:   7.69788e+07
+Sanity check:     PASSED (all blocks freed)
+[PASSED] Test 2: Full pool exhaustion cycles
+
+========================================
+[PASSED] All pool stress tests passed!
+========================================
+
+
+ Performance counter stats for 'build/Release/pool_stress':
+
+      106775921660      cycles:u                                                              
+      119178204201      instructions:u                                                        
+         389823519      cache-references:u                                                    
+         141517329      cache-misses:u                                                        
+       30221894102      L1-dcache-loads:u                                                     
+         413349878      L1-dcache-load-misses:u                                               
+                 0      mem_load_l3_hit_retired.xsnp_hitm:u                                      
+                 8      ocr.demand_rfo.l3_hit.snoop_hitm:u                                      
+
+      27.229233715 seconds time elapsed
+
+      24.002892000 seconds user
+       3.157900000 seconds sys
+
+

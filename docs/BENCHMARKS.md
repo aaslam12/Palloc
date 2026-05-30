@@ -76,8 +76,8 @@ Arena is the fastest for pure linear allocation. Pool's CAS overhead on alloc ma
 
 | Allocator  | cycles/op |
 |------------|----------:|
-| malloc     | 3.9       |
-| **jemalloc** | **5.2** |
+| **malloc** | **3.9**   |
+| jemalloc   | 5.2       |
 | Slab (TLC) | 8.9       |
 
 Once threads hold more than ~128 live objects simultaneously, the TLC overflows and refills hit contended CAS on the shared pool bitmap. jemalloc's per-arena partitioning wins here.
@@ -168,3 +168,34 @@ RDTSC cycles/op.
 | 256B  | 11.0 | 17.9     | 13.5  |
 | 1024B | 18.0 | 24.5     | 20.9  |
 | 4096B | 41.8 | 46.6     | 41.7  |
+
+---
+
+## Profiling Artifacts
+
+Perf artifacts are intentionally secondary to the benchmark tables: they explain where time and coherency traffic go, but they are not substitutes for controlled throughput/latency runs. Regeneration instructions and environment notes are in [`PROFILING.md`](PROFILING.md).
+
+### Flamegraphs
+
+| Workload | Artifact | Why it exists |
+|----------|----------|---------------|
+| Slab TLC stress | [`artifacts/flamegraphs/slab_tlc_stress.svg`](artifacts/flamegraphs/slab_tlc_stress.svg) | Shows hot-path cost distribution across TLC hits, batch refill, and multi-slab cache churn. |
+| Pool threaded stress | [`artifacts/flamegraphs/pool_thread_stress.svg`](artifacts/flamegraphs/pool_thread_stress.svg) | Shows shared-pool contention and bitmap/free-count hot spots under 12-thread churn. |
+
+### Perf Counter Snapshots
+
+Captured with `perf stat` on Linux `7.0.9-zen1-1-zen`, Intel i5-11500, GCC 16.1.1, Release `-O3 -flto`.
+
+| Workload | Time | cycles | instructions | cache misses | load HITM | RFO HITM | Notes |
+|----------|-----:|-------:|-------------:|-------------:|----------:|---------:|-------|
+| `slab_tlc_stress` | 0.373 s | 5.67B | 5.42B | 2.56M | 4.82M | 7.02M | TLC path has measurable but limited coherency traffic. |
+| `pool_thread_stress` | 9.149 s | 389.92B | 15.59B | 8.74M | 311.84M | 341.08M | Shared pool contention produces substantial cache-to-cache modified sharing. |
+| `pool_stress` | 27.229 s | 106.78B | 119.18B | 141.52M | 0 | 8 | Single-thread direct pool path has effectively no HITM traffic. |
+
+Raw `perf stat` output:
+
+- [`artifacts/perf/slab_tlc_stress.perfstat.txt`](artifacts/perf/slab_tlc_stress.perfstat.txt)
+- [`artifacts/perf/pool_thread_stress.perfstat.txt`](artifacts/perf/pool_thread_stress.perfstat.txt)
+- [`artifacts/perf/pool_stress.perfstat.txt`](artifacts/perf/pool_stress.perfstat.txt)
+
+`perf c2c` would be the right tool to attribute HITM traffic to exact cache lines, but this machine currently has `kernel.perf_event_paranoid=2`, which blocks precise load/store sampling for unprivileged runs. The current artifacts therefore prove aggregate coherency behavior, not exact false-sharing addresses.

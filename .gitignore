@@ -13,3 +13,7 @@
 compile_commands.json
 
 perf.data
+docs/artifacts/perf/*.perf.data
+docs/artifacts/perf/*.perf.script
+docs/artifacts/perf/*.folded
+docs/artifacts/perf/*.c2c.data

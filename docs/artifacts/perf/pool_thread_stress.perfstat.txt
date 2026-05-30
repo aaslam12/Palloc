@@ -1,0 +1,42 @@
+
+=== Pool Threaded Stress Test ===
+Threads: 12
+
+--- Test 1: High-contention churn ---
+Successful cycles: 120000000
+Elapsed:           8.12862 s
+Ops/sec:           2.95253e+07
+[PASSED]
+
+--- Test 2: Full exhaustion + concurrent free ---
+Blocks exhausted:   3145728
+Elapsed:            0.887351 s
+[PASSED]
+
+--- Test 3: Concurrent cycles + synchronized reset ---
+Cycles:             150
+Elapsed:            0.0672997 s
+[PASSED]
+
+========================================
+[PASSED] All pool threaded stress tests passed!
+========================================
+
+
+ Performance counter stats for 'build/Release/pool_thread_stress':
+
+      389917498865      cycles:u                                                              
+       15592833664      instructions:u                                                        
+        1872071903      cache-references:u                                                    
+           8735260      cache-misses:u                                                        
+        3916808125      L1-dcache-loads:u                                                     
+        1307341344      L1-dcache-load-misses:u                                               
+         311839033      mem_load_l3_hit_retired.xsnp_hitm:u                                      
+         341082267      ocr.demand_rfo.l3_hit.snoop_hitm:u                                      
+
+       9.149239910 seconds time elapsed
+
+      93.594824000 seconds user
+       0.555465000 seconds sys
+
+

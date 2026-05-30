@@ -1,0 +1,66 @@
+
+=== Slab TLC (Thread-Local Cache) Stress Test ===
+Threads: 12
+
+--- Test 1: Single-thread TLC vs direct-pool latency ---
+  (all size classes now use TLC)
+    8B [TLC]: 2.1718 ns/op
+   16B [TLC]: 2.15383 ns/op
+   32B [TLC]: 2.16168 ns/op
+   64B [TLC]: 2.21891 ns/op
+  128B [TLC]: 2.31494 ns/op
+  256B [TLC]: 2.29811 ns/op
+  512B [TLC]: 2.39313 ns/op
+
+--- Test 2: TLC batch refill/flush pressure ---
+  Hold count:  129 (> one batch = 128)
+  Cycles:      50000
+  ns/op:       3.18777
+
+--- Test 3: Concurrent TLC all size classes ---
+  Threads:   12
+  Total ops: 12000000
+  Elapsed:   0.00630695 s
+  Throughput:1902664142 ops/s
+
+--- Test 4: Epoch invalidation under concurrent alloc ---
+  Resets performed: 20
+  Elapsed:          0.101605 s
+  [Allocators recovered from epoch invalidation without errors]
+
+--- Test 5a: Multi-slab TLC no-churn (slabs == MAX_CACHED_SLABS = 4) ---
+  Threads:    12
+  Total ops:  2400000
+  Elapsed:    0.0167193 s
+  Throughput: 143546705 ops/s
+  ns/op:      6.96637
+
+--- Test 5b: Multi-slab TLC churn (slabs = 8 > MAX_CACHED_SLABS = 4) ---
+  Threads:    12
+  Total ops:  2400000
+  Elapsed:    0.0983667 s
+  Throughput: 24398507 ops/s
+  ns/op:      40.9861
+
+=================================================
+[PASSED] All TLC stress tests passed!
+=================================================
+
+
+ Performance counter stats for 'build/Release/slab_tlc_stress':
+
+        5672982421      cycles:u                                                              
+        5417332264      instructions:u                                                        
+          35078388      cache-references:u                                                    
+           2556945      cache-misses:u                                                        
+         917238366      L1-dcache-loads:u                                                     
+          19832186      L1-dcache-load-misses:u                                               
+           4821652      mem_load_l3_hit_retired.xsnp_hitm:u                                      
+           7020499      ocr.demand_rfo.l3_hit.snoop_hitm:u                                      
+
+       0.373191625 seconds time elapsed
+
+       1.352680000 seconds user
+       0.049575000 seconds sys
+
+

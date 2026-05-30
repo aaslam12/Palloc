@@ -86,28 +86,15 @@ The config is validated at compile time. Non-power-of-two sizes, out-of-order cl
 
 ## Architecture
 
-```
-                      caller
-                        |
-            slab::palloc(size) / slab::free(ptr, size)
-                        |
-                        v
-   size_to_index(size)    ->   constant-time bit ops + LUT, no pointer lookup
-                        |
-                        v
-   +---------------------------------------------+
-   |  thread-local cache (per thread, per slab)  |   <- hot path: array index op
-   |  128 slots, batch-refill from pool          |      + one acquire epoch load
-   +---------------------------------------------+
-                        |   miss / overflow
-                        v
-   +---------------------------------------------+
-   |  pool[i]  (one per size class)              |   <- fallback: still lock-free
-   |  bitmap allocator over a sub-region         |      atomic CAS on uint64 words
-   +---------------------------------------------+
-                        |   exhausted
-                        v
-   grow on demand: virtual_commit() within reserved region
+```mermaid
+flowchart TD
+    Caller[caller] --> SlabCall["slab::palloc(size) / slab::free(ptr, size)"]
+    SlabCall --> Route["size_to_index(size)<br/>constant-time bit ops + LUT<br/>no pointer lookup"]
+    Route --> TLC{"thread-local cache<br/>per thread, per slab"}
+    TLC -->|Hit| Hot["array index pop/push<br/>+ one acquire epoch load"]
+    TLC -->|Miss / Overflow| Pool["pool_view for size class<br/>atomic bitmap over sub-region"]
+    Pool --> Bitmap["CAS on uint64 bitmap words<br/>fetch_and on free"]
+    Bitmap -->|Pool exhausted| Commit["virtual_commit() next chunk<br/>inside reserved region"]
 ```
 
 The default config covers 8B-4096B in 10 power-of-two size classes. Each `slab` reserves up to 100GB(configurable) of *virtual* address space at construction, then commits physical pages on demand as pools fill up.
@@ -138,7 +125,7 @@ Each slab reserves a large virtual region (no physical pages backing it), then c
 
 ## Performance
 
-Headline numbers below. Full benchmark suite is in [`docs/BENCHMARKS.md`](docs/BENCHMARKS.md).
+Headline numbers below. Full benchmark suite is in [`docs/BENCHMARKS.md`](docs/BENCHMARKS.md), with perf/flamegraph methodology in [`docs/PROFILING.md`](docs/PROFILING.md).
 
 Measured on Linux, 12-core Intel i5 11th gen, GCC `-O3 -flto`. Lower is better.
 
@@ -148,7 +135,7 @@ Measured on Linux, 12-core Intel i5 11th gen, GCC `-O3 -flto`. Lower is better.
 |----------|-----------:|---------:|-------:|
 | Single size (32B) | **1.0** | 3.1 | 1.2 |
 | Mixed sizes       | 2.5 | 3.2 | **2.3** |
-| Batch-hold (500 live objects) | 8.9 | **5.2** | 3.9 |
+| Batch-hold (500 live objects) | 8.9 | 5.2 | **3.9** |
 > Lower is better
 
 Slab leads on single-size contention patterns. Once threads hold more than ~128 live objects simultaneously, the TLC overflows and refills hit contended atomic CAS on the shared pool bitmap, where jemalloc's per-arena design wins.
@@ -235,7 +222,7 @@ include/         public headers
 src/             source files
 tests/           Catch2 unit tests
 stress_tests/    standalone benchmark source files
-docs/            extended documentation
+docs/            benchmarks, profiling notes, and generated artifacts
 build.py         primary build entry point (wraps CMake)
 ```
 
