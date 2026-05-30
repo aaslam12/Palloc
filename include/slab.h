@@ -3,6 +3,7 @@
 #include "palloc_atomic.h"
 #include "platform.h"
 #include "pool_view.h"
+#include "profiler.h"
 #include "slab_config.h"
 #include <cassert>
 #include <cstddef>
@@ -393,9 +394,13 @@ void slab<Tconfig>::grow_pool(size_t index) noexcept
 
     // commit payload pages — flat bitmap words are already zeroed from construction
     std::byte* chunk_base = m_pool_bases[index] + old * block_size;
-    AL::platform_mem::virtual_commit(chunk_base, chunk_blocks * block_size);
+    {
+        PALLOC_ZONE("slab::grow_pool_commit");
+        AL::platform_mem::virtual_commit(chunk_base, chunk_blocks * block_size);
+    }
 
     p.advance_committed(old + chunk_blocks);
+    PALLOC_PLOT("slab_committed_blocks", static_cast<int64_t>(p.committed_blocks()));
 }
 
 template<slab_config_type Tconfig>
@@ -403,6 +408,8 @@ bool slab<Tconfig>::ensure_initial_commit(size_t index) noexcept
 {
     if (m_initial_committed[index].load(std::memory_order_acquire))
         return true;
+
+    PALLOC_ZONE("slab::ensure_initial_commit");
 
     size_t block_size   = Tconfig::SIZE_CLASS_CONFIG[index].byte_size;
     size_t chunk_blocks = Tconfig::SIZE_CLASS_CONFIG[index].num_blocks;
@@ -419,6 +426,7 @@ bool slab<Tconfig>::ensure_initial_commit(size_t index) noexcept
 template<slab_config_type Tconfig>
 void slab<Tconfig>::decommit_chunk(size_t index, size_t chunk_idx) noexcept
 {
+    PALLOC_ZONE("slab::decommit_chunk");
     pool_view& p = shared_pools[index];
     size_t block_size   = Tconfig::SIZE_CLASS_CONFIG[index].byte_size;
     size_t chunk_blocks = p.blocks_per_chunk();
@@ -458,14 +466,19 @@ void* slab<Tconfig>::alloc_internal(size_t size)
         }
 
         if (auto elem = cache.try_pop()) [[likely]]
+        {
+            PALLOC_ZONE("slab::alloc_tlc_hit");
             return elem;
+        }
 
+        PALLOC_ZONE("slab::alloc_tlc_miss");
         size_t num_allocated = p.alloc_batch(cache.batch_size, cache.objects.data());
         cache.current = num_allocated;
         return cache.try_pop();
     }
     else
     {
+        PALLOC_ZONE("slab::alloc_direct");
         return p.alloc();
     }
 }
@@ -485,6 +498,7 @@ void* slab<Tconfig>::calloc(size_t size)
 template<slab_config_type Tconfig>
 void slab<Tconfig>::reset()
 {
+    PALLOC_ZONE("slab::reset");
     for (auto& p : shared_pools)
         p.reset();
     epoch.fetch_add(1, std::memory_order_release);
@@ -493,6 +507,7 @@ void slab<Tconfig>::reset()
 template<slab_config_type Tconfig>
 void slab<Tconfig>::shrink() noexcept
 {
+    PALLOC_ZONE("slab::shrink");
     for (size_t i = 0; i < Tconfig::NUM_SIZE_CLASSES; ++i)
     {
         pool_view& p = shared_pools[i];
@@ -546,6 +561,7 @@ void slab<Tconfig>::free(void* ptr, size_t size)
 
         if (cache.is_full()) [[unlikely]]
         {
+            PALLOC_ZONE("slab::free_tlc_flush");
             // flush tail segment first, keep recent entries hot in TLC
             auto flush_span = std::span<void*>(cache.objects.data() + (cache.current - cache.batch_size), cache.batch_size);
             p.free_batch(flush_span);
@@ -555,6 +571,7 @@ void slab<Tconfig>::free(void* ptr, size_t size)
     }
     else
     {
+        PALLOC_ZONE("slab::free_direct");
         shared_pools[index].free(ptr);
     }
 }

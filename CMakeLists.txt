@@ -14,6 +14,7 @@ option(PALLOC_USE_CLANG_TIDY "Run clang-tidy during builds if available" OFF)
 option(PALLOC_SINGLE_THREADED "Disable allocator mutexes for single-threaded use" OFF)
 option(PALLOC_ENABLE_THP "Enable Transparent Huge Pages" ON)
 option(PALLOC_USE_2MB_HUGE_PAGES "Deterministic 2 MB Huge Pages" OFF)
+option(PALLOC_PROFILE "Enable Tracy profiler instrumentation" OFF)
 
 if(NOT CMAKE_BUILD_TYPE)
   set(CMAKE_BUILD_TYPE "Release" CACHE STRING "Choose the type of build." FORCE)
@@ -87,6 +88,21 @@ endif()
 
 if(PALLOC_SINGLE_THREADED)
   target_compile_definitions(palloc PUBLIC PALLOC_SINGLE_THREADED)
+endif()
+
+if(PALLOC_PROFILE)
+  include(FetchContent)
+  set(TRACY_ENABLE ON CACHE BOOL "Enable Tracy profiler" FORCE)
+  FetchContent_Declare(
+    tracy
+    GIT_REPOSITORY https://github.com/wolfpld/tracy.git
+    GIT_TAG        189e8a1a892b8f9f0ca5834485dbe58430b062d7
+    GIT_SHALLOW    FALSE
+  )
+  FetchContent_MakeAvailable(tracy)
+  target_compile_definitions(palloc PUBLIC TRACY_ENABLE)
+  target_link_libraries(palloc PUBLIC TracyClient)
+  target_include_directories(palloc PUBLIC $<BUILD_INTERFACE:${tracy_SOURCE_DIR}/public>)
 endif()
 
 if(PALLOC_ENABLE_THP)

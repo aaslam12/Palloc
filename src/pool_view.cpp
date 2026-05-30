@@ -1,4 +1,5 @@
 #include "pool_view.h"
+#include "profiler.h"
 #include <bit>
 #include <cassert>
 #include <cstdint>
@@ -264,6 +265,7 @@ void pool_view::init_from_region(void*                    payload,
 
 void* pool_view::alloc() noexcept
 {
+    PALLOC_ZONE("pool_view::alloc");
     size_t committed = m_committed_blocks.load(std::memory_order_acquire);
     size_t num_words = (committed + 63) / 64;
 
@@ -289,6 +291,7 @@ void* pool_view::alloc() noexcept
 
 size_t pool_view::alloc_batch(size_t count, void* out[]) noexcept
 {
+    PALLOC_ZONE("pool_view::alloc_batch");
     size_t slots[128];
     size_t n = count > 128 ? 128 : count;
 
@@ -335,6 +338,7 @@ void pool_view::free(void* ptr) noexcept
 
 void pool_view::free_batch(std::span<void*> ptrs) noexcept
 {
+    PALLOC_ZONE("pool_view::free_batch");
     size_t count = 0;
     for (void* ptr : ptrs)
     {
@@ -350,6 +354,7 @@ void pool_view::free_batch(std::span<void*> ptrs) noexcept
 
 void pool_view::reset() noexcept
 {
+    PALLOC_ZONE("pool_view::reset");
     size_t committed = m_committed_blocks.load(std::memory_order_relaxed);
     size_t num_words = (committed + 63) / 64;
 

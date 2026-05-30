@@ -52,6 +52,11 @@ def main():
         "--static", action="store_true", help="Link libraries statically"
     )
     parser.add_argument(
+        "--profile",
+        action="store_true",
+        help="Enable Tracy profiler instrumentation (defines TRACY_ENABLE)",
+    )
+    parser.add_argument(
         "--install",
         help="Install to the specified prefix (e.g., ~/.local or /usr/local)",
     )
@@ -111,6 +116,7 @@ def main():
         f"-DPALLOC_BUILD_STRESS_TESTS={'ON' if args.stress_test else 'OFF'}",
         f"-DPALLOC_STATIC_LINKING={'ON' if args.static else 'OFF'}",
         f"-DPALLOC_SINGLE_THREADED={'ON' if args.single_threaded else 'OFF'}",
+        f"-DPALLOC_PROFILE={'ON' if args.profile else 'OFF'}",
     ]
 
     if args.asan:
