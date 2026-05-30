@@ -32,26 +32,26 @@ static size_t bitmap_alloc_bit(palloc_atomic<uint64_t>* words,
         {
             uint64_t word = words[w].load(std::memory_order_relaxed);
 
-            while (true)
+            while (word != ~uint64_t(0))
             {
-                if (word == ~uint64_t(0))
-                    break;
-
                 size_t bit  = static_cast<size_t>(std::countr_zero(~word));
                 size_t slot = w * 64 + bit;
 
                 if (slot >= num_slots)
                     return static_cast<size_t>(-1);
 
-                uint64_t new_word = word | (uint64_t(1) << bit);
+                uint64_t mask = uint64_t(1) << bit;
+                uint64_t old  = words[w].fetch_or(mask, std::memory_order_acquire);
 
-                if (words[w].compare_exchange_weak(word, new_word,
-                        std::memory_order_acquire, std::memory_order_relaxed))
+                if (!(old & mask))
                 {
-                    if (new_word == ~uint64_t(0))
+                    // we claimed the bit
+                    if ((old | mask) == ~uint64_t(0))
                         tl_hint = w + 1; // advance past full word
                     return slot;
                 }
+                // another thread took this bit; re-read and try the next free bit
+                word = old | mask;
             }
         }
     }
