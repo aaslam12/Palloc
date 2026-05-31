@@ -56,10 +56,38 @@ struct palloc_atomic
         return old;
     }
 
+    T fetch_xor(T v, [[maybe_unused]] std::memory_order order = std::memory_order_seq_cst) noexcept
+    {
+        T old = value;
+        value ^= v;
+        return old;
+    }
+
+    T exchange(T v, [[maybe_unused]] std::memory_order order = std::memory_order_seq_cst) noexcept
+    {
+        T old = value;
+        value = v;
+        return old;
+    }
+
     bool compare_exchange_weak(T& expected,
                                T desired,
                                [[maybe_unused]] std::memory_order success = std::memory_order_seq_cst,
                                [[maybe_unused]] std::memory_order failure = std::memory_order_seq_cst) noexcept
+    {
+        if (value == expected)
+        {
+            value = desired;
+            return true;
+        }
+        expected = value;
+        return false;
+    }
+
+    bool compare_exchange_strong(T& expected,
+                                 T desired,
+                                 [[maybe_unused]] std::memory_order success = std::memory_order_seq_cst,
+                                 [[maybe_unused]] std::memory_order failure = std::memory_order_seq_cst) noexcept
     {
         if (value == expected)
         {
