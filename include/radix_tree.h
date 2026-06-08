@@ -12,8 +12,6 @@ static constexpr size_t PAGE_SHIFT = 12;
 static constexpr size_t LEVELS = 5;
 static constexpr size_t MAX_RANGES_PER_NODE = 8;
 
-// Lock-free radix tree for O(1) pointer-to-slab lookups.
-//
 // Leaf-only design: data is stored exclusively at leaf level, one entry per page.
 // No range arrays — pure multi-level page directory. Each page maps directly
 // to its owner, eliminating linear search and overflow risks.
