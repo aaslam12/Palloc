@@ -20,7 +20,7 @@ struct pool_mutex
 using pool_mutex = std::mutex;
 #endif
 
-class alignas(std::hardware_destructive_interference_size) pool
+class alignas(64) pool
 {
 public:
     pool();

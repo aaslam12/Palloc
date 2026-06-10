@@ -113,7 +113,7 @@ The thread-local cache is the obvious lock-free part: each thread holds up to 12
 `slab::reset()` is the only operation that needs to invalidate other threads' caches. Instead of stop-the-world synchronization, `reset()` increments an atomic epoch counter; the next TLC access on any thread compares its cached epoch against the current epoch and discards stale entries on mismatch. This keeps the invalidation check off the hot path (one acquire atomic load, predicted not-taken) and never touches other threads directly.
 
 **4. Cache-line aligned pools.**
-`class alignas(std::hardware_destructive_interference_size) pool` prevents false sharing when `pool` objects are stored in arrays. Note that `slab` internally stores `pool_view` (a non-owning view type), which is not cache-line aligned — bitmap word contention between size classes is instead mitigated by the thread-local hint that steers each thread to a different starting word.
+`class alignas(64) pool` prevents false sharing when `pool` objects are stored in arrays. Note that `slab` internally stores `pool_view` (a non-owning view type), which is not cache-line aligned — bitmap word contention between size classes is instead mitigated by the thread-local hint that steers each thread to a different starting word.
 
 **5. `palloc_atomic<T>` as a compile-time switch.**
 Normally `palloc_atomic<T>` aliases `std::atomic<T>`. Under `PALLOC_SINGLE_THREADED`, it becomes a plain value wrapper with the same interface. Every atomic load, store, fetch_add, and compare_exchange in the codebase compiles down to a plain memory access, which removes every `LOCK`-prefixed instruction in the binary. Useful for thread-pinned components like per-core trading engines where the allocator is never shared.
