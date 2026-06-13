@@ -172,19 +172,21 @@ size_t bitmap::alloc_bit(size_t limit) noexcept
 
                 size_t bit = static_cast<size_t>(std::countr_zero(~effective));
                 size_t slot = w * 64 + bit;
-
                 if (slot >= limit_slots)
                     break;
 
-                uint64_t new_word = word | (uint64_t(1) << bit);
-                if (m_words[w].compare_exchange_weak(word, new_word, std::memory_order_acquire, std::memory_order_relaxed))
+                uint64_t mask = uint64_t(1) << bit;
+                uint64_t old = m_words[w].fetch_or(mask, std::memory_order_acquire);
+                if (!(old & mask))
                 {
+                    // we claimed the bit
                     m_free_count.fetch_sub(1, std::memory_order_relaxed);
-                    if ((new_word | tail_mask) == ~uint64_t(0))
+                    if (((old | mask) | tail_mask) == ~uint64_t(0))
                         m_hint.store(w + 1, std::memory_order_relaxed);
                     return slot;
                 }
-                // word reloaded by CAS failure - loop recomputes effective
+                // another thread took this bit; update word and try the next free bit
+                word = old | mask;
             }
         }
     }
@@ -204,60 +206,67 @@ size_t bitmap::alloc_bits_batch(size_t count, size_t limit, size_t out[]) noexce
     uint64_t tail_mask = (limit_tail != 0) ? ~((uint64_t(1) << limit_tail) - 1) : 0;
 
     size_t found = 0;
-    for (size_t w = 0; w < limit_words && found < count; ++w)
+    for (int pass = 0; pass < 2 && found < count; ++pass)
     {
-        uint64_t word = m_words[w].load(std::memory_order_relaxed);
+        size_t hint = m_hint.load(std::memory_order_relaxed);
+        size_t start = (pass == 0) ? hint : 0;
+        size_t stop = (pass == 0) ? limit_words : hint;
+        if (start >= limit_words)
+            stop = 0;
 
-        uint64_t claimed = 0;
-        size_t local_found = 0;
-        uint64_t new_word = 0;
-
-        do
+        for (size_t w = start; w < (pass == 0 ? limit_words : stop) && found < count; ++w)
         {
-            claimed = 0;
-            local_found = 0;
-            uint64_t effective = (w == limit_words - 1) ? (word | tail_mask) : word;
-            if (effective == ~uint64_t(0))
-                break;
+            uint64_t word = m_words[w].load(std::memory_order_relaxed);
+            uint64_t claimed = 0;
+            size_t local_found = 0;
+            uint64_t new_word = 0;
 
-            uint64_t free_bits = ~effective;
-            size_t tmp = found;
-
-            while (free_bits && tmp < count)
+            do
             {
-                size_t bit = static_cast<size_t>(std::countr_zero(free_bits));
-                size_t slot = w * 64 + bit;
-                if (slot >= limit_slots)
-                {
-                    free_bits = 0;
+                claimed = 0;
+                local_found = 0;
+                uint64_t effective = (w == limit_words - 1) ? (word | tail_mask) : word;
+                if (effective == ~uint64_t(0))
                     break;
+
+                uint64_t free_bits = ~effective;
+                size_t tmp = found;
+
+                while (free_bits && tmp < count)
+                {
+                    size_t bit = static_cast<size_t>(std::countr_zero(free_bits));
+                    size_t slot = w * 64 + bit;
+                    if (slot >= limit_slots)
+                    {
+                        free_bits = 0;
+                        break;
+                    }
+                    claimed |= uint64_t(1) << bit;
+                    free_bits &= free_bits - 1;
+                    ++tmp;
+                    ++local_found;
                 }
-                claimed |= (uint64_t(1) << bit);
-                free_bits &= free_bits - 1;
-                ++tmp;
-                ++local_found;
+
+                if (claimed == 0)
+                    break;
+                new_word = word | claimed;
             }
+            while (!m_words[w].compare_exchange_weak(word, new_word, std::memory_order_acquire, std::memory_order_relaxed));
 
             if (claimed == 0)
-                break;
-            new_word = word | claimed;
-        }
-        while (!m_words[w].compare_exchange_weak(word, new_word, std::memory_order_acquire, std::memory_order_relaxed));
-        // word reloaded on CAS failure - effective recomputed at top of do-while
+                continue;
 
-        if (claimed == 0)
-            continue;
-
-        uint64_t bits = claimed;
-        while (bits)
-        {
-            size_t bit = static_cast<size_t>(std::countr_zero(bits));
-            out[found++] = w * 64 + bit;
-            bits &= bits - 1;
+            uint64_t bits = claimed;
+            while (bits)
+            {
+                size_t bit = static_cast<size_t>(std::countr_zero(bits));
+                out[found++] = w * 64 + bit;
+                bits &= bits - 1;
+            }
+            m_free_count.fetch_sub(local_found, std::memory_order_relaxed);
+            if ((new_word | tail_mask) == ~uint64_t(0))
+                m_hint.store(w + 1, std::memory_order_relaxed);
         }
-        m_free_count.fetch_sub(local_found, std::memory_order_relaxed);
-        if ((new_word | tail_mask) == ~uint64_t(0))
-            m_hint.store(w + 1, std::memory_order_relaxed);
     }
     return found;
 }
@@ -275,11 +284,16 @@ void bitmap::free_bit(size_t slot) noexcept
 
 void bitmap::free_bits_batch(const size_t slots[], size_t count) noexcept
 {
-    for (size_t i = 0; i < count; ++i)
+    size_t i = 0;
+    while (i < count)
     {
         size_t word_idx = slots[i] >> 6;
         uint64_t mask = uint64_t(1) << (slots[i] & 63);
+        size_t j = i + 1;
+        while (j < count && (slots[j] >> 6) == word_idx)
+            mask |= uint64_t(1) << (slots[j++] & 63);
         m_words[word_idx].fetch_and(~mask, std::memory_order_release);
+        i = j;
     }
     m_free_count.fetch_add(count, std::memory_order_relaxed);
 }
@@ -296,7 +310,8 @@ void bitmap::reset() noexcept
 
 void bitmap::reset_to(size_t active_words, size_t active_slots) noexcept
 {
-    if (active_words == 0 || active_slots == 0) return;
+    if (active_words == 0 || active_slots == 0)
+        return;
     std::memset(m_words, 0, active_words * sizeof(uint64_t));
     size_t tail = active_slots % 64;
     if (tail != 0)
@@ -326,6 +341,50 @@ void bitmap::set_slot(size_t slot) noexcept
 void bitmap::clear_slot(size_t slot) noexcept
 {
     m_words[slot >> 6].fetch_and(~(uint64_t(1) << (slot & 63)), std::memory_order_relaxed);
+}
+
+size_t bitmap::find_lowest_set_bit() const noexcept
+{
+    // Scans forward from the beginning.
+    // Optimization: avoid double-check in the loop by handling tail bit boundary only if necessary.
+    for (size_t w = 0; w < m_num_words; ++w)
+    {
+        uint64_t word = m_words[w].load(std::memory_order_relaxed);
+        if (word != 0)
+        {
+            size_t bit = static_cast<size_t>(std::countr_zero(word));
+            size_t slot = w * 64 + bit;
+            if (slot < m_num_slots) [[likely]]
+                return slot;
+            return static_cast<size_t>(-1);
+        }
+    }
+    return static_cast<size_t>(-1);
+}
+
+size_t bitmap::find_highest_set_bit() const noexcept
+{
+    if (m_num_words == 0)
+        return static_cast<size_t>(-1);
+
+    // mask out pre-set tail bits in the last word before scanning
+    size_t tail = m_num_slots % 64;
+    uint64_t last = m_words[m_num_words - 1].load(std::memory_order_relaxed);
+
+    if (tail != 0)
+        last &= (uint64_t(1) << tail) - 1;
+
+    if (last != 0)
+        return (m_num_words - 1) * 64 + (63 - static_cast<size_t>(std::countl_zero(last)));
+
+    for (size_t i = m_num_words - 1; i > 0; --i)
+    {
+        uint64_t word = m_words[i - 1].load(std::memory_order_relaxed);
+
+        if (word != 0)
+            return (i - 1) * 64 + (63 - static_cast<size_t>(std::countl_zero(word)));
+    }
+    return static_cast<size_t>(-1);
 }
 
 size_t bitmap::free_count() const noexcept

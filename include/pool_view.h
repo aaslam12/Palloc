@@ -13,7 +13,7 @@ namespace AL
 // The payload region is virtual_alloc'd (reserved) and committed in chunks on
 // demand by the owning slab. alloc/free only scan up to committed_blocks words,
 // so uncommitted payload is never touched.
-class pool_view
+class alignas(64) pool_view
 {
 public:
     pool_view() noexcept = default;
@@ -68,16 +68,19 @@ public:
     [[nodiscard]] static size_t bitmap_bytes_for(size_t block_count) noexcept;
 
 private:
-    std::byte* m_memory = nullptr;
+    // hot fields on alloc/free path — all fit within cache line 0 (offsets 0–63)
+    std::byte* m_memory = nullptr;               // offset 0
+    size_t m_block_shift = 0;                    // offset 8
+    palloc_atomic<size_t> m_committed_blocks{0}; // offset 16
+    palloc_atomic<size_t> m_free_count{0};       // offset 24
+    palloc_atomic<uint64_t>* m_bitmap = nullptr; // offset 32
+    
+    // cold fields follow
     size_t m_block_size = 0;
-    size_t m_block_shift = 0;
     size_t m_blocks_per_chunk = 0;
-    palloc_atomic<size_t> m_committed_blocks{0};
     palloc_atomic<size_t> m_reserved_blocks{0};
     size_t m_virtual_block_ceiling = 0;
-    palloc_atomic<size_t> m_free_count{0};
-    palloc_atomic<uint64_t>* m_bitmap = nullptr; // covers all virtual_block_ceiling blocks
-    size_t m_bitmap_words = 0;                   // (virtual_block_ceiling + 63) / 64
+    size_t m_bitmap_words = 0;
 };
 
 } // namespace AL

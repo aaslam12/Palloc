@@ -40,7 +40,7 @@ public:
     // atomically free a slot
     void free_bit(size_t slot) noexcept;
 
-    // batch free - accumulates masks per word, one fetch_and per touched word
+    // batch free - accumulates masks per word, one fetch_and per touched word (slots must be sorted by word index)
     void free_bits_batch(const size_t slots[], size_t count) noexcept;
 
     // reset all slots to free - not thread-safe
@@ -55,6 +55,14 @@ public:
     [[nodiscard]] bool is_slot_set(size_t slot) const noexcept;
     void set_slot(size_t slot) noexcept;
     void clear_slot(size_t slot) noexcept;
+
+    // returns slot index or (size_t)-1 if not
+    // performs a linear scan over words
+    [[nodiscard]] size_t find_lowest_set_bit() const noexcept;
+
+    // returns slot index or (size_t)-1 if not
+    // performs a linear scan over words
+    [[nodiscard]] size_t find_highest_set_bit() const noexcept;
 
     [[nodiscard]] size_t free_count() const noexcept;
     void set_free_count(size_t n) noexcept;
