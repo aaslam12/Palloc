@@ -119,9 +119,9 @@ struct pool_allocator
     using difference_type = std::ptrdiff_t;
 
     // pool block size must equal sizeof(T)
-    pool* m_pool;
+    pool<> * m_pool;
 
-    pool_allocator(pool* p) noexcept : m_pool(p)
+    pool_allocator(pool<>* p) noexcept : m_pool(p)
     {}
 
     template<typename U>

@@ -2,68 +2,68 @@
 
 #include <atomic>
 
-#if defined(PALLOC_SINGLE_THREADED)
-
-// lightweight atomic wrapper - compiles to plain loads/stores under PALLOC_SINGLE_THREADED
-// eliminates all LOCK-prefixed instructions
+// PALLOC_SINGLE_THREADED_OVERRIDE: force all allocator components to non-threaded mode.
+// Overrides the per-component Tthreaded template parameter default.
+#if defined(PALLOC_SINGLE_THREADED_OVERRIDE) || defined(PALLOC_SINGLE_THREADED)
+inline constexpr bool PALLOC_THREADED_DEFAULT = false;
+#else
+inline constexpr bool PALLOC_THREADED_DEFAULT = true;
+#endif
 
 namespace AL
 {
+
+// plain-value wrapper with the same interface as std::atomic.
+// used when Tthreaded=false — compiles to plain loads/stores, no LOCK prefix.
 template<typename T>
-struct palloc_atomic
+struct plain_atomic
 {
     T value;
 
-    palloc_atomic() noexcept = default;
-    constexpr palloc_atomic(T v) noexcept : value(v)
+    plain_atomic() noexcept = default;
+    constexpr plain_atomic(T v) noexcept : value(v)
     {}
 
-    T load([[maybe_unused]] std::memory_order order = std::memory_order_seq_cst) const noexcept
+    T load([[maybe_unused]] std::memory_order = std::memory_order_seq_cst) const noexcept
     {
         return value;
     }
-
-    void store(T v, [[maybe_unused]] std::memory_order order = std::memory_order_seq_cst) noexcept
+    void store(T v, [[maybe_unused]] std::memory_order = std::memory_order_seq_cst) noexcept
     {
         value = v;
     }
 
-    T fetch_add(T v, [[maybe_unused]] std::memory_order order = std::memory_order_seq_cst) noexcept
+    T fetch_add(T v, [[maybe_unused]] std::memory_order = std::memory_order_seq_cst) noexcept
     {
         T old = value;
         value += v;
         return old;
     }
-
-    T fetch_sub(T v, [[maybe_unused]] std::memory_order order = std::memory_order_seq_cst) noexcept
+    T fetch_sub(T v, [[maybe_unused]] std::memory_order = std::memory_order_seq_cst) noexcept
     {
         T old = value;
         value -= v;
         return old;
     }
-
-    T fetch_and(T v, [[maybe_unused]] std::memory_order order = std::memory_order_seq_cst) noexcept
+    T fetch_and(T v, [[maybe_unused]] std::memory_order = std::memory_order_seq_cst) noexcept
     {
         T old = value;
         value &= v;
         return old;
     }
-
-    T fetch_or(T v, [[maybe_unused]] std::memory_order order = std::memory_order_seq_cst) noexcept
+    T fetch_or(T v, [[maybe_unused]] std::memory_order = std::memory_order_seq_cst) noexcept
     {
         T old = value;
         value |= v;
         return old;
     }
-
-    T fetch_xor(T v, [[maybe_unused]] std::memory_order order = std::memory_order_seq_cst) noexcept
+    T fetch_xor(T v, [[maybe_unused]] std::memory_order = std::memory_order_seq_cst) noexcept
     {
         T old = value;
         value ^= v;
         return old;
     }
-
-    T exchange(T v, [[maybe_unused]] std::memory_order order = std::memory_order_seq_cst) noexcept
+    T exchange(T v, [[maybe_unused]] std::memory_order = std::memory_order_seq_cst) noexcept
     {
         T old = value;
         value = v;
@@ -83,7 +83,6 @@ struct palloc_atomic
         expected = value;
         return false;
     }
-
     bool compare_exchange_strong(T& expected,
                                  T desired,
                                  [[maybe_unused]] std::memory_order success = std::memory_order_seq_cst,
@@ -98,23 +97,19 @@ struct palloc_atomic
         return false;
     }
 
-    palloc_atomic& operator=(T v) noexcept
+    plain_atomic& operator=(T v) noexcept
     {
         value = v;
         return *this;
     }
-
-    palloc_atomic(const palloc_atomic&) = delete;
-    palloc_atomic& operator=(const palloc_atomic&) = delete;
+    plain_atomic(const plain_atomic&) = delete;
+    plain_atomic& operator=(const plain_atomic&) = delete;
 };
+
+// palloc_atomic<T, Tthreaded>:
+//   Tthreaded=true  -> std::atomic<T>   (real atomics, LOCK-prefixed instructions)
+//   Tthreaded=false -> plain_atomic<T>  (plain loads/stores, zero overhead)
+template<typename T, bool Tthreaded = PALLOC_THREADED_DEFAULT>
+using palloc_atomic = std::conditional_t<Tthreaded, std::atomic<T>, plain_atomic<T>>;
+
 } // namespace AL
-
-#else
-
-namespace AL
-{
-template<typename T>
-using palloc_atomic = std::atomic<T>;
-} // namespace AL
-
-#endif

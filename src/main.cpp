@@ -1,5 +1,5 @@
+#include "palloc.h"
 #include <cstdio>
-#include <slab.h>
 
 int main(void)
 {

@@ -5,10 +5,10 @@
 
 // ─── helpers ─────────────────────────────────────────────────────────────────
 
-static AL::bitmap make(std::vector<uint8_t>& buf, size_t num_slots)
+static AL::bitmap<> make(std::vector<uint8_t>& buf, size_t num_slots)
 {
-    buf.assign(AL::bitmap::required_size(num_slots), 0);
-    AL::bitmap bm;
+    buf.assign(AL::bitmap<>::required_size(num_slots), 0);
+    AL::bitmap<> bm;
     bm.init(buf.data(), num_slots);
     return bm;
 }
@@ -28,11 +28,11 @@ TEST_CASE("bitmap init", "[bitmap]")
 
 TEST_CASE("bitmap required_size rounds up to word boundary", "[bitmap]")
 {
-    CHECK(AL::bitmap::required_size(1)   == 8);
-    CHECK(AL::bitmap::required_size(64)  == 8);
-    CHECK(AL::bitmap::required_size(65)  == 16);
-    CHECK(AL::bitmap::required_size(128) == 16);
-    CHECK(AL::bitmap::required_size(129) == 24);
+    CHECK(AL::bitmap<>::required_size(1)   == 8);
+    CHECK(AL::bitmap<>::required_size(64)  == 8);
+    CHECK(AL::bitmap<>::required_size(65)  == 16);
+    CHECK(AL::bitmap<>::required_size(128) == 16);
+    CHECK(AL::bitmap<>::required_size(129) == 24);
 }
 
 // ─── alloc_bit ───────────────────────────────────────────────────────────────

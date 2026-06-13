@@ -42,8 +42,8 @@ int main()
         const size_t num_slots        = threads * 65536;
         const size_t iters_per_thread = 5000000;
 
-        std::vector<uint8_t> buf(bitmap::required_size(num_slots), 0);
-        bitmap bm;
+        std::vector<uint8_t> buf(bitmap<>::required_size(num_slots), 0);
+        bitmap<> bm;
         bm.init(buf.data(), num_slots);
 
         std::atomic<bool>   start{false};
@@ -95,8 +95,8 @@ int main()
     {
         const size_t num_slots = threads * 262144;
 
-        std::vector<uint8_t> buf(bitmap::required_size(num_slots), 0);
-        bitmap bm;
+        std::vector<uint8_t> buf(bitmap<>::required_size(num_slots), 0);
+        bitmap<> bm;
         bm.init(buf.data(), num_slots);
 
         std::atomic<bool>   start{false};
@@ -167,8 +167,8 @@ int main()
         const size_t batch            = 64;
         const size_t iters_per_thread = 100000;
 
-        std::vector<uint8_t> buf(bitmap::required_size(num_slots), 0);
-        bitmap bm;
+        std::vector<uint8_t> buf(bitmap<>::required_size(num_slots), 0);
+        bitmap<> bm;
         bm.init(buf.data(), num_slots);
 
         std::atomic<bool>   start{false};
@@ -225,8 +225,8 @@ int main()
         const size_t num_slots = 65536;
         const size_t limit     = num_slots / 2;
 
-        std::vector<uint8_t> buf(bitmap::required_size(num_slots), 0);
-        bitmap bm;
+        std::vector<uint8_t> buf(bitmap<>::required_size(num_slots), 0);
+        bitmap<> bm;
         bm.init(buf.data(), num_slots);
 
         std::atomic<bool>   start{false};

@@ -172,7 +172,6 @@ struct slab_config
         }
         return total;
     }
-
 };
 
 template<typename T>

@@ -58,7 +58,7 @@ struct thread_local_cache
     }
 };
 
-template<slab_config_type Tconfig>
+template<slab_config_type Tconfig, bool Tthreaded = PALLOC_THREADED_DEFAULT>
 class slab
 {
 public:
@@ -137,7 +137,7 @@ private:
     struct cache_entry
     {
         size_t epoch;
-        slab<Tconfig>* owner;
+        slab<Tconfig, Tthreaded>* owner;
         std::array<thread_local_cache, Tconfig::NUM_CACHED_CLASSES> storage;
 
         void flush()
@@ -219,21 +219,21 @@ private:
 
     inline thread_local static std::array<cache_entry, MAX_CACHED_SLABS> caches{};
 
-    palloc_atomic<size_t> epoch;
-    std::array<pool_view, Tconfig::NUM_SIZE_CLASSES> shared_pools;
+    palloc_atomic<size_t, Tthreaded> epoch;
+    std::array<pool_view<Tthreaded>, Tconfig::NUM_SIZE_CLASSES> shared_pools;
 
     std::byte* m_region = nullptr;
     size_t m_region_size = 0;
 
     // base address of each pool's payload sub-region
     std::array<std::byte*, Tconfig::NUM_SIZE_CLASSES> m_pool_bases{};
-    std::array<palloc_atomic<bool>, Tconfig::NUM_SIZE_CLASSES> m_initial_committed{};
+    std::array<palloc_atomic<bool, Tthreaded>, Tconfig::NUM_SIZE_CLASSES> m_initial_committed{};
 
     // flat bitmap per pool: covers all virtual_block_ceiling blocks, committed upfront
-    std::array<palloc_atomic<uint64_t>*, Tconfig::NUM_SIZE_CLASSES> m_pool_bitmaps{};
+    std::array<palloc_atomic<uint64_t, Tthreaded>*, Tconfig::NUM_SIZE_CLASSES> m_pool_bitmaps{};
     std::array<size_t, Tconfig::NUM_SIZE_CLASSES> m_pool_bitmap_bytes{};
 
-    inline static palloc_atomic<size_t> next_slab_id{0};
+    inline static palloc_atomic<size_t, true> next_slab_id{0}; // always atomic: shared across all instances
     size_t slab_id;
 
     void grow_pool(size_t index) noexcept;
@@ -241,8 +241,8 @@ private:
     void decommit_chunk(size_t index, size_t chunk_idx) noexcept;
 };
 
-template<slab_config_type Tconfig>
-slab<Tconfig>::slab() : epoch(0), slab_id(next_slab_id.fetch_add(1, std::memory_order_relaxed))
+template<slab_config_type Tconfig, bool Tthreaded>
+slab<Tconfig, Tthreaded>::slab() : epoch(0), slab_id(next_slab_id.fetch_add(1, std::memory_order_relaxed))
 {
     size_t page_size = AL::platform_mem::page_size();
 
@@ -285,8 +285,8 @@ slab<Tconfig>::slab() : epoch(0), slab_id(next_slab_id.fetch_add(1, std::memory_
         size_t chunk_size = sc.num_blocks;
 
         // allocate and zero the full flat bitmap (covers all ceiling blocks)
-        size_t bmap_bytes = pool_view::bitmap_bytes_for(ceiling);
-        auto*  bmap       = static_cast<palloc_atomic<uint64_t>*>(AL::platform_mem::alloc(bmap_bytes));
+        size_t bmap_bytes = pool_view<Tthreaded>::bitmap_bytes_for(ceiling);
+        auto*  bmap       = static_cast<palloc_atomic<uint64_t, Tthreaded>*>(AL::platform_mem::alloc(bmap_bytes));
         if (!bmap)
         {
             for (size_t j = 0; j < i; ++j)
@@ -314,8 +314,8 @@ slab<Tconfig>::slab() : epoch(0), slab_id(next_slab_id.fetch_add(1, std::memory_
     }
 }
 
-template<slab_config_type Tconfig>
-slab<Tconfig>::~slab()
+template<slab_config_type Tconfig, bool Tthreaded>
+slab<Tconfig, Tthreaded>::~slab()
 {
     // invalidate TLC entries for this slab
     const size_t preferred = slab_id % MAX_CACHED_SLABS;
@@ -354,8 +354,8 @@ slab<Tconfig>::~slab()
     }
 }
 
-template<slab_config_type Tconfig>
-void* slab<Tconfig>::palloc(size_t size)
+template<slab_config_type Tconfig, bool Tthreaded>
+void* slab<Tconfig, Tthreaded>::palloc(size_t size)
 {
     if (size == 0 || size == (size_t)-1) [[unlikely]]
         return nullptr;
@@ -375,13 +375,13 @@ void* slab<Tconfig>::palloc(size_t size)
     return alloc_internal(size);
 }
 
-template<slab_config_type Tconfig>
-void slab<Tconfig>::grow_pool(size_t index) noexcept
+template<slab_config_type Tconfig, bool Tthreaded>
+void slab<Tconfig, Tthreaded>::grow_pool(size_t index) noexcept
 {
     if (!ensure_initial_commit(index)) [[unlikely]]
         return;
 
-    pool_view& p = shared_pools[index];
+    pool_view<Tthreaded>& p = shared_pools[index];
     if (p.committed_blocks() >= p.virtual_block_ceiling())
         return;
 
@@ -403,8 +403,8 @@ void slab<Tconfig>::grow_pool(size_t index) noexcept
     PALLOC_PLOT("slab_committed_blocks", static_cast<int64_t>(p.committed_blocks()));
 }
 
-template<slab_config_type Tconfig>
-bool slab<Tconfig>::ensure_initial_commit(size_t index) noexcept
+template<slab_config_type Tconfig, bool Tthreaded>
+bool slab<Tconfig, Tthreaded>::ensure_initial_commit(size_t index) noexcept
 {
     if (m_initial_committed[index].load(std::memory_order_acquire))
         return true;
@@ -423,11 +423,11 @@ bool slab<Tconfig>::ensure_initial_commit(size_t index) noexcept
     return true;
 }
 
-template<slab_config_type Tconfig>
-void slab<Tconfig>::decommit_chunk(size_t index, size_t chunk_idx) noexcept
+template<slab_config_type Tconfig, bool Tthreaded>
+void slab<Tconfig, Tthreaded>::decommit_chunk(size_t index, size_t chunk_idx) noexcept
 {
     PALLOC_ZONE("slab::decommit_chunk");
-    pool_view& p = shared_pools[index];
+    pool_view<Tthreaded>& p = shared_pools[index];
     size_t block_size   = Tconfig::SIZE_CLASS_CONFIG[index].byte_size;
     size_t chunk_blocks = p.blocks_per_chunk();
 
@@ -442,14 +442,14 @@ void slab<Tconfig>::decommit_chunk(size_t index, size_t chunk_idx) noexcept
         m_pool_bitmaps[index][w].store(0, std::memory_order_relaxed);
 }
 
-template<slab_config_type Tconfig>
-void* slab<Tconfig>::alloc_internal(size_t size)
+template<slab_config_type Tconfig, bool Tthreaded>
+void* slab<Tconfig, Tthreaded>::alloc_internal(size_t size)
 {
     size_t index = size_to_index(size);
     if (index == (size_t)-1) [[unlikely]]
         return nullptr;
 
-    pool_view& p = shared_pools[index];
+    pool_view<Tthreaded>& p = shared_pools[index];
     if (!ensure_initial_commit(index)) [[unlikely]]
         return nullptr;
 
@@ -483,8 +483,8 @@ void* slab<Tconfig>::alloc_internal(size_t size)
     }
 }
 
-template<slab_config_type Tconfig>
-void* slab<Tconfig>::calloc(size_t size)
+template<slab_config_type Tconfig, bool Tthreaded>
+void* slab<Tconfig, Tthreaded>::calloc(size_t size)
 {
     void* ptr = palloc(size);
     if (ptr != nullptr)
@@ -495,8 +495,8 @@ void* slab<Tconfig>::calloc(size_t size)
     return ptr;
 }
 
-template<slab_config_type Tconfig>
-void slab<Tconfig>::reset()
+template<slab_config_type Tconfig, bool Tthreaded>
+void slab<Tconfig, Tthreaded>::reset()
 {
     PALLOC_ZONE("slab::reset");
     for (auto& p : shared_pools)
@@ -504,13 +504,13 @@ void slab<Tconfig>::reset()
     epoch.fetch_add(1, std::memory_order_release);
 }
 
-template<slab_config_type Tconfig>
-void slab<Tconfig>::shrink() noexcept
+template<slab_config_type Tconfig, bool Tthreaded>
+void slab<Tconfig, Tthreaded>::shrink() noexcept
 {
     PALLOC_ZONE("slab::shrink");
     for (size_t i = 0; i < Tconfig::NUM_SIZE_CLASSES; ++i)
     {
-        pool_view& p = shared_pools[i];
+        pool_view<Tthreaded>& p = shared_pools[i];
         size_t committed = p.committed_blocks();
         size_t chunk_size = p.blocks_per_chunk();
 
@@ -535,8 +535,8 @@ void slab<Tconfig>::shrink() noexcept
     }
 }
 
-template<slab_config_type Tconfig>
-void slab<Tconfig>::free(void* ptr, size_t size)
+template<slab_config_type Tconfig, bool Tthreaded>
+void slab<Tconfig, Tthreaded>::free(void* ptr, size_t size)
 {
     if (size == 0 || size == (size_t)-1) [[unlikely]]
         return;
@@ -547,7 +547,7 @@ void slab<Tconfig>::free(void* ptr, size_t size)
     if (index == (size_t)-1) [[unlikely]]
         return;
 
-    pool_view& p = shared_pools[index];
+    pool_view<Tthreaded>& p = shared_pools[index];
     if (index < Tconfig::NUM_CACHED_CLASSES) [[likely]]
     {
         auto cached_entry = get_or_create_cache_entry();
@@ -576,12 +576,12 @@ void slab<Tconfig>::free(void* ptr, size_t size)
     }
 }
 
-template<slab_config_type Tconfig>
-bool slab<Tconfig>::free_unsized(void* ptr)
+template<slab_config_type Tconfig, bool Tthreaded>
+bool slab<Tconfig, Tthreaded>::free_unsized(void* ptr)
 {
     for (size_t i = 0; i < Tconfig::NUM_SIZE_CLASSES; ++i)
     {
-        pool_view& p = shared_pools[i];
+        pool_view<Tthreaded>& p = shared_pools[i];
         if (p.owns(ptr))
         {
             if (i < Tconfig::NUM_CACHED_CLASSES) [[likely]]
@@ -613,14 +613,14 @@ bool slab<Tconfig>::free_unsized(void* ptr)
     return false;
 }
 
-template<slab_config_type Tconfig>
-size_t slab<Tconfig>::get_pool_count() const
+template<slab_config_type Tconfig, bool Tthreaded>
+size_t slab<Tconfig, Tthreaded>::get_pool_count() const
 {
     return std::size(shared_pools);
 }
 
-template<slab_config_type Tconfig>
-size_t slab<Tconfig>::get_total_capacity() const
+template<slab_config_type Tconfig, bool Tthreaded>
+size_t slab<Tconfig, Tthreaded>::get_total_capacity() const
 {
     size_t total = 0;
     for (const auto& p : shared_pools)
@@ -628,8 +628,8 @@ size_t slab<Tconfig>::get_total_capacity() const
     return total;
 }
 
-template<slab_config_type Tconfig>
-size_t slab<Tconfig>::get_total_free() const
+template<slab_config_type Tconfig, bool Tthreaded>
+size_t slab<Tconfig, Tthreaded>::get_total_free() const
 {
     size_t total = 0;
     for (const auto& p : shared_pools)
@@ -637,16 +637,16 @@ size_t slab<Tconfig>::get_total_free() const
     return total;
 }
 
-template<slab_config_type Tconfig>
-size_t slab<Tconfig>::get_pool_block_size(size_t index) const
+template<slab_config_type Tconfig, bool Tthreaded>
+size_t slab<Tconfig, Tthreaded>::get_pool_block_size(size_t index) const
 {
     if (index >= Tconfig::NUM_SIZE_CLASSES)
         return 0;
     return shared_pools[index].block_size();
 }
 
-template<slab_config_type Tconfig>
-size_t slab<Tconfig>::get_pool_free_space(size_t index) const
+template<slab_config_type Tconfig, bool Tthreaded>
+size_t slab<Tconfig, Tthreaded>::get_pool_free_space(size_t index) const
 {
     if (index >= Tconfig::NUM_SIZE_CLASSES)
         return 0;
@@ -654,15 +654,15 @@ size_t slab<Tconfig>::get_pool_free_space(size_t index) const
 }
 
 #if PALLOC_DEBUG
-template<slab_config_type Tconfig>
-size_t slab<Tconfig>::get_num_comitted_blocks() const
+template<slab_config_type Tconfig, bool Tthreaded>
+size_t slab<Tconfig, Tthreaded>::get_num_comitted_blocks() const
 {
     return 0;
 }
 #endif
 
-template<slab_config_type Tconfig>
-bool slab<Tconfig>::owns(void* ptr) const
+template<slab_config_type Tconfig, bool Tthreaded>
+bool slab<Tconfig, Tthreaded>::owns(void* ptr) const
 {
     for (const auto& p : shared_pools)
         if (p.owns(ptr))

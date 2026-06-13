@@ -12,27 +12,27 @@ TEST_CASE("Pool: Basic construction", "[pool][basic]")
 {
     SECTION("Single block pool")
     {
-        AL::pool p(64, 1);
+        AL::pool<> p(64, 1);
         REQUIRE(p.get_capacity() >= 64);
         REQUIRE(p.get_free_space() >= 64);
     }
 
     SECTION("Multiple blocks pool")
     {
-        AL::pool p(64, 100);
+        AL::pool<> p(64, 100);
         REQUIRE(p.get_capacity() >= 64 * 100);
         REQUIRE(p.get_free_space() == 64 * 100);
     }
 
     SECTION("Small block size (rounds up to pointer size)")
     {
-        AL::pool p(1, 10);
+        AL::pool<> p(1, 10);
         REQUIRE(p.get_capacity() >= sizeof(void*) * 10);
     }
 
     SECTION("Large block size (power of 2 rounding)")
     {
-        AL::pool p(100, 10);
+        AL::pool<> p(100, 10);
         // Should round up to next power of 2
         REQUIRE(p.get_capacity() >= 128 * 10);
     }
@@ -40,7 +40,7 @@ TEST_CASE("Pool: Basic construction", "[pool][basic]")
 
 TEST_CASE("Pool: Basic allocations", "[pool][alloc]")
 {
-    AL::pool p(64, 10);
+    AL::pool<> p(64, 10);
 
     SECTION("Single allocation")
     {
@@ -96,7 +96,7 @@ TEST_CASE("Pool: Basic allocations", "[pool][alloc]")
 
 TEST_CASE("Pool: Allocation exhaustion", "[pool][alloc][edge]")
 {
-    AL::pool p(64, 5);
+    AL::pool<> p(64, 5);
 
     SECTION("Exactly fill pool")
     {
@@ -136,7 +136,7 @@ TEST_CASE("Pool: Allocation exhaustion", "[pool][alloc][edge]")
 
 TEST_CASE("Pool: Basic free", "[pool][free]")
 {
-    AL::pool p(64, 10);
+    AL::pool<> p(64, 10);
 
     SECTION("Free single allocation")
     {
@@ -194,7 +194,7 @@ TEST_CASE("Pool: Basic free", "[pool][free]")
 
 TEST_CASE("Pool: Calloc zeros memory", "[pool][calloc]")
 {
-    AL::pool p(128, 10);
+    AL::pool<> p(128, 10);
 
     SECTION("Calloc single block")
     {
@@ -240,7 +240,7 @@ TEST_CASE("Pool: Calloc zeros memory", "[pool][calloc]")
 
 TEST_CASE("Pool: Reset functionality", "[pool][reset]")
 {
-    AL::pool p(64, 10);
+    AL::pool<> p(64, 10);
 
     SECTION("Reset empty pool")
     {
@@ -313,7 +313,7 @@ TEST_CASE("Pool: Reset functionality", "[pool][reset]")
 
 TEST_CASE("Pool: Memory integrity", "[pool][integrity]")
 {
-    AL::pool p(128, 10);
+    AL::pool<> p(128, 10);
 
     SECTION("Write and read data")
     {
@@ -379,7 +379,7 @@ TEST_CASE("Pool: Deferred initialization via init()", "[pool][init]")
 {
     SECTION("Default construct then init")
     {
-        AL::pool p;
+        AL::pool<> p;
         p.init(64, 10);
 
         REQUIRE(p.get_block_size() == 64);
@@ -393,7 +393,7 @@ TEST_CASE("Pool: Deferred initialization via init()", "[pool][init]")
 
     SECTION("Init with small block size rounds up")
     {
-        AL::pool p;
+        AL::pool<> p;
         p.init(1, 10);
 
         REQUIRE(p.get_block_size() == sizeof(void*));
@@ -401,7 +401,7 @@ TEST_CASE("Pool: Deferred initialization via init()", "[pool][init]")
 
     SECTION("Init with non-power-of-2 rounds up")
     {
-        AL::pool p;
+        AL::pool<> p;
         p.init(100, 5);
 
         REQUIRE(p.get_block_size() == 128);
@@ -413,7 +413,7 @@ TEST_CASE("Pool: Move constructor", "[pool][move]")
 {
     SECTION("Move transfers ownership")
     {
-        AL::pool src(64, 10);
+        AL::pool<> src(64, 10);
         void* ptr = src.alloc();
         REQUIRE(ptr != nullptr);
         src.free(ptr);
@@ -423,7 +423,7 @@ TEST_CASE("Pool: Move constructor", "[pool][move]")
         size_t src_block_count = src.get_block_count();
         size_t src_free = src.get_free_space();
 
-        AL::pool dst(std::move(src));
+        AL::pool<> dst(std::move(src));
 
         REQUIRE(dst.get_capacity() == src_capacity);
         REQUIRE(dst.get_block_size() == src_block_size);
@@ -433,8 +433,8 @@ TEST_CASE("Pool: Move constructor", "[pool][move]")
 
     SECTION("Moved-to pool is usable")
     {
-        AL::pool src(128, 5);
-        AL::pool dst(std::move(src));
+        AL::pool<> src(128, 5);
+        AL::pool<> dst(std::move(src));
 
         void* ptr = dst.alloc();
         REQUIRE(ptr != nullptr);
@@ -448,8 +448,8 @@ TEST_CASE("Pool: Move assignment", "[pool][move]")
 {
     SECTION("Move assignment transfers ownership")
     {
-        AL::pool src(64, 10);
-        AL::pool dst(128, 5);
+        AL::pool<> src(64, 10);
+        AL::pool<> dst(128, 5);
 
         size_t src_capacity = src.get_capacity();
         size_t src_block_size = src.get_block_size();
@@ -464,11 +464,11 @@ TEST_CASE("Pool: Move assignment", "[pool][move]")
 
     SECTION("Self move assignment is safe")
     {
-        AL::pool p(64, 10);
+        AL::pool<> p(64, 10);
         void* ptr = p.alloc();
         REQUIRE(ptr != nullptr);
 
-        AL::pool& ref = p;
+        AL::pool<>& ref = p;
         p = std::move(ref);
 
         // Pool should still work after self-move
@@ -478,8 +478,8 @@ TEST_CASE("Pool: Move assignment", "[pool][move]")
 
     SECTION("Moved-to pool replaces old memory")
     {
-        AL::pool dst(32, 20);
-        AL::pool src(256, 5);
+        AL::pool<> dst(32, 20);
+        AL::pool<> src(256, 5);
 
         dst = std::move(src);
 
@@ -496,10 +496,10 @@ TEST_CASE("Pool: Block size power-of-2 rounding", "[pool][sizes]")
 {
     SECTION("Exact powers of 2 are unchanged")
     {
-        AL::pool p8(8, 1);
-        AL::pool p16(16, 1);
-        AL::pool p64(64, 1);
-        AL::pool p1024(1024, 1);
+        AL::pool<> p8(8, 1);
+        AL::pool<> p16(16, 1);
+        AL::pool<> p64(64, 1);
+        AL::pool<> p1024(1024, 1);
 
         REQUIRE(p8.get_block_size() == 8);
         REQUIRE(p16.get_block_size() == 16);
@@ -509,10 +509,10 @@ TEST_CASE("Pool: Block size power-of-2 rounding", "[pool][sizes]")
 
     SECTION("Non-powers round up to next power of 2")
     {
-        AL::pool p9(9, 1);
-        AL::pool p33(33, 1);
-        AL::pool p100(100, 1);
-        AL::pool p500(500, 1);
+        AL::pool<> p9(9, 1);
+        AL::pool<> p33(33, 1);
+        AL::pool<> p100(100, 1);
+        AL::pool<> p500(500, 1);
 
         REQUIRE(p9.get_block_size() == 16);
         REQUIRE(p33.get_block_size() == 64);
@@ -522,8 +522,8 @@ TEST_CASE("Pool: Block size power-of-2 rounding", "[pool][sizes]")
 
     SECTION("Below pointer size rounds to pointer size first")
     {
-        AL::pool p1(1, 1);
-        AL::pool p3(3, 1);
+        AL::pool<> p1(1, 1);
+        AL::pool<> p3(3, 1);
 
         REQUIRE(p1.get_block_size() == sizeof(void*));
         REQUIRE(p3.get_block_size() == sizeof(void*));
@@ -532,7 +532,7 @@ TEST_CASE("Pool: Block size power-of-2 rounding", "[pool][sizes]")
 
 TEST_CASE("Pool: Alloc exhaustion then reset then reuse", "[pool][reset][edge]")
 {
-    AL::pool p(64, 10);
+    AL::pool<> p(64, 10);
 
     // Exhaust
     for (int i = 0; i < 10; ++i)

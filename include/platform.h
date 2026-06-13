@@ -56,12 +56,7 @@ struct platform_mem
 #ifdef _WIN32
         return VirtualAlloc(nullptr, size, MEM_RESERVE, PAGE_NOACCESS);
 #else
-        void* ptr = mmap(nullptr,
-                         size,
-                         PROT_NONE,
-                         MAP_PRIVATE | MAP_ANONYMOUS | MAP_NORESERVE,
-                         -1,
-                         0);
+        void* ptr = mmap(nullptr, size, PROT_NONE, MAP_PRIVATE | MAP_ANONYMOUS | MAP_NORESERVE, -1, 0);
         return ptr == MAP_FAILED ? nullptr : ptr;
 #endif
     }

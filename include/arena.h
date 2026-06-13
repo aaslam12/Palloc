@@ -17,7 +17,7 @@
 
 namespace AL
 {
-template<size_t Talignment = PALLOC_DEFAULT_ALIGNMENT>
+template<size_t Talignment = PALLOC_DEFAULT_ALIGNMENT, bool Tthreaded = PALLOC_THREADED_DEFAULT>
 class arena
 {
 public:
@@ -129,7 +129,7 @@ public:
 
 private:
     std::byte* memory;
-    palloc_atomic<size_t> used;
+    palloc_atomic<size_t, Tthreaded> used;
     size_t capacity;
 };
 } // namespace AL
