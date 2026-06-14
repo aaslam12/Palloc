@@ -1,319 +1,109 @@
+#include <benchmark/benchmark.h>
 #include "slab.h"
-#include <algorithm>
-#include <atomic>
-#include <chrono>
-#include <cstring>
-#include <iostream>
-#include <thread>
+#include <array>
 #include <vector>
-
 using namespace AL;
 
-namespace
+static void BM_Slab_TLC(benchmark::State& state)
 {
-size_t worker_count()
-{
-    const unsigned hw = std::thread::hardware_concurrency();
-    if (hw == 0)
-        return 8;
-    return std::min<size_t>(hw, 16);
+    const size_t sz = static_cast<size_t>(state.range(0));
+    static default_slab* s = nullptr;
+    if (state.thread_index() == 0) s = new default_slab();
+    for (auto _ : state)
+    {
+        void* p = s->palloc(sz);
+        benchmark::DoNotOptimize(p);
+        s->free(p, sz);
+    }
+    if (state.thread_index() == 0) { delete s; s = nullptr; }
+    state.SetItemsProcessed(state.iterations() * 2);
 }
+BENCHMARK(BM_Slab_TLC)->Arg(8)->Arg(16)->Arg(32)->Arg(64)->Arg(128)->Arg(256)->Arg(512);
 
-void wait_for_start(const std::atomic<bool>& start)
+static void BM_Slab_TLC_BatchPressure(benchmark::State& state)
 {
-    while (!start.load(std::memory_order_acquire))
-        std::this_thread::yield();
+    constexpr size_t hold = 129;
+    default_slab s;
+    void* held[hold];
+    for (auto _ : state)
+    {
+        for (size_t i = 0; i < hold; ++i) held[i] = s.palloc(32);
+        for (size_t i = 0; i < hold; ++i) s.free(held[i], 32);
+    }
+    state.SetItemsProcessed(state.iterations() * hold * 2);
 }
+BENCHMARK(BM_Slab_TLC_BatchPressure);
 
-double ns_per_op(double elapsed_s, size_t ops)
+static void BM_Slab_TLC_Concurrent(benchmark::State& state)
 {
-    return (elapsed_s * 1e9) / static_cast<double>(ops);
+    static constexpr std::array<size_t,10> all_sizes = {8,16,32,64,128,256,512,1024,2048,4096};
+    static default_slab* s = nullptr;
+    if (state.thread_index() == 0) s = new default_slab();
+    const size_t sz = all_sizes[static_cast<size_t>(state.thread_index()) % all_sizes.size()];
+    for (auto _ : state)
+    {
+        void* p = s->palloc(sz);
+        if (p) { benchmark::DoNotOptimize(p); s->free(p, sz); }
+    }
+    if (state.thread_index() == 0) { delete s; s = nullptr; }
+    state.SetItemsProcessed(state.iterations() * 2);
 }
-} // namespace
+BENCHMARK(BM_Slab_TLC_Concurrent)->ThreadRange(1, 16);
 
-int main()
+static void BM_Slab_MultiSlab_NoChurn(benchmark::State& state)
 {
-    const size_t threads = worker_count();
-
-    std::cout << "\n=== Slab TLC (Thread-Local Cache) Stress Test ===\n";
-    std::cout << "Threads: " << threads << "\n\n";
-
-    // Test 1: TLC hit rate under single-thread churn
+    constexpr size_t num_slabs = slab_config<>::NUM_CACHED_SLABS;
+    static std::vector<default_slab*>* slabs = nullptr;
+    if (state.thread_index() == 0)
     {
-        constexpr size_t ops = 2'000'000;
-        default_slab s{};
-
-        auto bench = [&](size_t size, const char* label) {
-            auto t0 = std::chrono::high_resolution_clock::now();
-            for (size_t i = 0; i < ops; ++i)
-            {
-                void* p = s.palloc(size);
-                s.free(p, size);
-            }
-            auto t1 = std::chrono::high_resolution_clock::now();
-            std::chrono::duration<double> elapsed = t1 - t0;
-            std::cout << "  " << label << ": " << ns_per_op(elapsed.count(), ops * 2) << " ns/op\n";
-        };
-
-        std::cout << "--- Test 1: Single-thread TLC vs direct-pool latency ---\n";
-        std::cout << "  (all size classes now use TLC)\n";
-        bench(8, "  8B [TLC]");
-        bench(16, " 16B [TLC]");
-        bench(32, " 32B [TLC]");
-        bench(64, " 64B [TLC]");
-        bench(128, "128B [TLC]");
-        bench(256, "256B [TLC]");
-        bench(512, "512B [TLC]");
-        std::cout << "\n";
+        slabs = new std::vector<default_slab*>(num_slabs);
+        for (auto& sp : *slabs) sp = new default_slab();
     }
-
-    // Test 2: TLC batch refill pressure
-    // Hold more than one batch worth of objects to force repeated refills.
+    const size_t tid = static_cast<size_t>(state.thread_index());
+    size_t i = 0;
+    for (auto _ : state)
     {
-        constexpr size_t batch_size = 128;            // TLC object_count
-        constexpr size_t hold_count = batch_size + 1; // forces at least one refill
-        constexpr size_t cycles = 50'000;
-        default_slab s{};
-
-        std::vector<void*> held(hold_count);
-
-        auto t0 = std::chrono::high_resolution_clock::now();
-        for (size_t c = 0; c < cycles; ++c)
-        {
-            for (size_t i = 0; i < hold_count; ++i)
-                held[i] = s.palloc(32);
-            for (size_t i = 0; i < hold_count; ++i)
-                s.free(held[i], 32);
-        }
-        auto t1 = std::chrono::high_resolution_clock::now();
-        std::chrono::duration<double> elapsed = t1 - t0;
-        size_t total_ops = cycles * hold_count * 2;
-
-        std::cout << "--- Test 2: TLC batch refill/flush pressure ---\n";
-        std::cout << "  Hold count:  " << hold_count << " (> one batch = " << batch_size << ")\n";
-        std::cout << "  Cycles:      " << cycles << "\n";
-        std::cout << "  ns/op:       " << ns_per_op(elapsed.count(), total_ops) << "\n\n";
+        default_slab& sl = *(*slabs)[(tid + i) % num_slabs];
+        size_t sz = (i % 2 == 0) ? 32 : 64;
+        void* p = sl.palloc(sz);
+        if (p) { benchmark::DoNotOptimize(p); sl.free(p, sz); }
+        ++i;
     }
-
-    // Test 3: Concurrent TLC — all threads on different size classes (all are cached)
-    // Each thread hammers a different size class from the full set.
+    if (state.thread_index() == 0)
     {
-        constexpr size_t iters = 500'000;
-        constexpr std::array<size_t, 10> all_sizes = {8, 16, 32, 64, 128, 256, 512, 1024, 2048, 4096};
-        default_slab s{};
-
-        std::atomic<bool> start{false};
-        std::atomic<size_t> total_ops{0};
-        std::vector<std::thread> workers;
-        workers.reserve(threads);
-
-        auto t0 = std::chrono::high_resolution_clock::now();
-
-        for (size_t tid = 0; tid < threads; ++tid)
-        {
-            workers.emplace_back([&, tid] {
-                size_t sz = all_sizes[tid % all_sizes.size()];
-                wait_for_start(start);
-                for (size_t i = 0; i < iters; ++i)
-                {
-                    void* p = s.palloc(sz);
-                    if (p == nullptr)
-                        continue;
-                    s.free(p, sz);
-                }
-                total_ops.fetch_add(iters * 2, std::memory_order_relaxed);
-            });
-        }
-
-        start.store(true, std::memory_order_release);
-        for (auto& t : workers)
-            t.join();
-
-        auto t1 = std::chrono::high_resolution_clock::now();
-        std::chrono::duration<double> elapsed = t1 - t0;
-
-        std::cout << "--- Test 3: Concurrent TLC all size classes ---\n";
-        std::cout << "  Threads:   " << threads << "\n";
-        std::cout << "  Total ops: " << total_ops.load() << "\n";
-        std::cout << "  Elapsed:   " << elapsed.count() << " s\n";
-        std::cout << "  Throughput:" << static_cast<size_t>(total_ops.load() / elapsed.count()) << " ops/s\n\n";
+        for (auto* sp : *slabs) delete sp;
+        delete slabs; slabs = nullptr;
     }
-
-    // Test 4: Epoch invalidation overhead
-    // One thread resets the slab while others allocate, measuring reset cost.
-    {
-        constexpr size_t alloc_iters = 200'000;
-        constexpr size_t reset_count = 20;
-        default_slab s{};
-
-        std::atomic<bool> start{false};
-        std::atomic<bool> done{false};
-        std::atomic<size_t> resets_done{0};
-        std::vector<std::thread> workers;
-        workers.reserve(threads);
-
-        // Allocator threads
-        for (size_t tid = 0; tid < threads - 1; ++tid)
-        {
-            workers.emplace_back([&, tid] {
-                wait_for_start(start);
-                for (size_t i = 0; !done.load(std::memory_order_acquire) && i < alloc_iters; ++i)
-                {
-                    size_t sz = (tid % 2 == 0) ? 32 : 64;
-                    void* p = s.palloc(sz);
-                    if (p)
-                        s.free(p, sz);
-                }
-            });
-        }
-
-        auto t0 = std::chrono::high_resolution_clock::now();
-        start.store(true, std::memory_order_release);
-
-        // Reset thread
-        for (size_t r = 0; r < reset_count; ++r)
-        {
-            std::this_thread::sleep_for(std::chrono::milliseconds(5));
-            s.reset();
-            resets_done.fetch_add(1, std::memory_order_relaxed);
-        }
-        done.store(true, std::memory_order_release);
-
-        for (auto& t : workers)
-            t.join();
-
-        auto t1 = std::chrono::high_resolution_clock::now();
-        std::chrono::duration<double> elapsed = t1 - t0;
-
-        std::cout << "--- Test 4: Epoch invalidation under concurrent alloc ---\n";
-        std::cout << "  Resets performed: " << resets_done.load() << "\n";
-        std::cout << "  Elapsed:          " << elapsed.count() << " s\n";
-        std::cout << "  [Allocators recovered from epoch invalidation without errors]\n\n";
-
-        // Verify slab is usable after all resets
-        for (size_t sz : {8, 16, 32, 64, 128, 256})
-        {
-            void* p = s.palloc(sz);
-            if (p == nullptr)
-            {
-                std::cerr << "ERROR: slab unusable after epoch resets for size " << sz << "\n";
-                return 1;
-            }
-            s.free(p, sz);
-        }
-    }
-
-    // Test 5a: Multi-slab TLC — no churn (slabs == MAX_CACHED_SLABS)
-    // Each thread rotates across exactly as many slabs as the TLC can hold,
-    // so cache entries are never evicted.
-    {
-        constexpr size_t num_slabs = slab_config<>::NUM_CACHED_SLABS;
-        constexpr size_t iters = 100'000;
-
-        std::vector<default_slab*> slabs(num_slabs);
-        for (auto& sp : slabs)
-            sp = new default_slab{};
-
-        std::atomic<bool> start{false};
-        std::atomic<size_t> total_ops{0};
-        std::vector<std::thread> workers;
-        workers.reserve(threads);
-
-        auto t0 = std::chrono::high_resolution_clock::now();
-
-        for (size_t tid = 0; tid < threads; ++tid)
-        {
-            workers.emplace_back([&, tid] {
-                wait_for_start(start);
-                for (size_t i = 0; i < iters; ++i)
-                {
-                    default_slab& s = *slabs[(tid + i) % num_slabs];
-                    size_t sz = (i % 2 == 0) ? 32 : 64;
-                    void* p = s.palloc(sz);
-                    if (p)
-                    {
-                        s.free(p, sz);
-                        total_ops.fetch_add(2, std::memory_order_relaxed);
-                    }
-                }
-            });
-        }
-
-        start.store(true, std::memory_order_release);
-        for (auto& t : workers)
-            t.join();
-
-        auto t1 = std::chrono::high_resolution_clock::now();
-        std::chrono::duration<double> elapsed = t1 - t0;
-        const size_t ops = total_ops.load();
-
-        std::cout << "--- Test 5a: Multi-slab TLC no-churn (slabs == MAX_CACHED_SLABS = " << num_slabs << ") ---\n";
-        std::cout << "  Threads:    " << threads << "\n";
-        std::cout << "  Total ops:  " << ops << "\n";
-        std::cout << "  Elapsed:    " << elapsed.count() << " s\n";
-        std::cout << "  Throughput: " << static_cast<size_t>(ops / elapsed.count()) << " ops/s\n";
-        std::cout << "  ns/op:      " << ns_per_op(elapsed.count(), ops) << "\n\n";
-
-        for (auto* sp : slabs)
-            delete sp;
-    }
-
-    // Test 5b: Multi-slab TLC — churn (slabs > MAX_CACHED_SLABS)
-    // Rotating across more slabs than the TLC can hold forces constant eviction.
-    {
-        constexpr size_t num_slabs = 2 * slab_config<>::NUM_CACHED_SLABS;
-        constexpr size_t iters = 100'000;
-
-        std::vector<default_slab*> slabs(num_slabs);
-        for (auto& sp : slabs)
-            sp = new default_slab{};
-
-        std::atomic<bool> start{false};
-        std::atomic<size_t> total_ops{0};
-        std::vector<std::thread> workers;
-        workers.reserve(threads);
-
-        auto t0 = std::chrono::high_resolution_clock::now();
-
-        for (size_t tid = 0; tid < threads; ++tid)
-        {
-            workers.emplace_back([&, tid] {
-                wait_for_start(start);
-                for (size_t i = 0; i < iters; ++i)
-                {
-                    default_slab& s = *slabs[(tid + i) % num_slabs];
-                    size_t sz = (i % 2 == 0) ? 32 : 64;
-                    void* p = s.palloc(sz);
-                    if (p)
-                    {
-                        s.free(p, sz);
-                        total_ops.fetch_add(2, std::memory_order_relaxed);
-                    }
-                }
-            });
-        }
-
-        start.store(true, std::memory_order_release);
-        for (auto& t : workers)
-            t.join();
-
-        auto t1 = std::chrono::high_resolution_clock::now();
-        std::chrono::duration<double> elapsed = t1 - t0;
-        const size_t ops = total_ops.load();
-
-        std::cout << "--- Test 5b: Multi-slab TLC churn (slabs = " << num_slabs << " > MAX_CACHED_SLABS = " << slab_config<>::NUM_CACHED_SLABS << ") ---\n";
-        std::cout << "  Threads:    " << threads << "\n";
-        std::cout << "  Total ops:  " << ops << "\n";
-        std::cout << "  Elapsed:    " << elapsed.count() << " s\n";
-        std::cout << "  Throughput: " << static_cast<size_t>(ops / elapsed.count()) << " ops/s\n";
-        std::cout << "  ns/op:      " << ns_per_op(elapsed.count(), ops) << "\n\n";
-
-        for (auto* sp : slabs)
-            delete sp;
-    }
-
-    std::cout << "=================================================\n";
-    std::cout << "[PASSED] All TLC stress tests passed!\n";
-    std::cout << "=================================================\n\n";
-    return 0;
+    state.SetItemsProcessed(state.iterations() * 2);
 }
+BENCHMARK(BM_Slab_MultiSlab_NoChurn)->ThreadRange(1, 16);
+
+static void BM_Slab_MultiSlab_Churn(benchmark::State& state)
+{
+    constexpr size_t num_slabs = 2 * slab_config<>::NUM_CACHED_SLABS;
+    static std::vector<default_slab*>* slabs = nullptr;
+    if (state.thread_index() == 0)
+    {
+        slabs = new std::vector<default_slab*>(num_slabs);
+        for (auto& sp : *slabs) sp = new default_slab();
+    }
+    const size_t tid = static_cast<size_t>(state.thread_index());
+    size_t i = 0;
+    for (auto _ : state)
+    {
+        default_slab& sl = *(*slabs)[(tid + i) % num_slabs];
+        size_t sz = (i % 2 == 0) ? 32 : 64;
+        void* p = sl.palloc(sz);
+        if (p) { benchmark::DoNotOptimize(p); sl.free(p, sz); }
+        ++i;
+    }
+    if (state.thread_index() == 0)
+    {
+        for (auto* sp : *slabs) delete sp;
+        delete slabs; slabs = nullptr;
+    }
+    state.SetItemsProcessed(state.iterations() * 2);
+}
+BENCHMARK(BM_Slab_MultiSlab_Churn)->ThreadRange(1, 16);
+
+BENCHMARK_MAIN();

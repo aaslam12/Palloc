@@ -1,42 +1,41 @@
-
-=== Pool Threaded Stress Test ===
-Threads: 12
-
---- Test 1: High-contention churn ---
-Successful cycles: 120000000
-Elapsed:           8.12862 s
-Ops/sec:           2.95253e+07
-[PASSED]
-
---- Test 2: Full exhaustion + concurrent free ---
-Blocks exhausted:   3145728
-Elapsed:            0.887351 s
-[PASSED]
-
---- Test 3: Concurrent cycles + synchronized reset ---
-Cycles:             150
-Elapsed:            0.0672997 s
-[PASSED]
-
-========================================
-[PASSED] All pool threaded stress tests passed!
-========================================
-
+2026-06-14T14:59:06-07:00
+Running build/Release/pool_thread_stress
+Run on (12 X 4600 MHz CPU s)
+CPU Caches:
+  L1 Data 48 KiB (x6)
+  L1 Instruction 32 KiB (x6)
+  L2 Unified 512 KiB (x6)
+  L3 Unified 12288 KiB (x1)
+Load Average: 0.91, 0.43, 0.30
+***WARNING*** CPU scaling is enabled, the benchmark real time measurements may be noisy and will incur extra overhead.
+---------------------------------------------------------------------------------------------
+Benchmark                                   Time             CPU   Iterations UserCounters...
+---------------------------------------------------------------------------------------------
+BM_Pool_Churn/threads:1                  6.17 ns         6.16 ns    115844949 items_per_second=324.716M/s
+BM_Pool_Churn/threads:2                  23.8 ns         23.6 ns     23591326 items_per_second=84.768M/s
+BM_Pool_Churn/threads:4                  67.6 ns         67.3 ns     10386640 items_per_second=29.6997M/s
+BM_Pool_Churn/threads:8                   177 ns          177 ns      4002512 items_per_second=11.3188M/s
+BM_Pool_Churn/threads:16                  432 ns          340 ns      2463472 items_per_second=5.88587M/s
+BM_Pool_ConcurrentReset/threads:1       0.232 ms        0.231 ms         5666 items_per_second=1.10735M/s
+BM_Pool_ConcurrentReset/threads:2       0.329 ms        0.329 ms         5796 items_per_second=779.069k/s
+BM_Pool_ConcurrentReset/threads:4       0.904 ms        0.901 ms        26672 items_per_second=284.048k/s
+BM_Pool_ConcurrentReset/threads:8       0.403 ms        0.402 ms        17552 items_per_second=636.659k/s
+BM_Pool_ConcurrentReset/threads:16      0.071 ms        0.055 ms        13168 items_per_second=4.64688M/s
 
  Performance counter stats for 'build/Release/pool_thread_stress':
 
-      389917498865      cycles:u                                                              
-       15592833664      instructions:u                                                        
-        1872071903      cache-references:u                                                    
-           8735260      cache-misses:u                                                        
-        3916808125      L1-dcache-loads:u                                                     
-        1307341344      L1-dcache-load-misses:u                                               
-         311839033      mem_load_l3_hit_retired.xsnp_hitm:u                                      
-         341082267      ocr.demand_rfo.l3_hit.snoop_hitm:u                                      
+   171,929,971,655      cycles:u                                                              
+   751,996,412,312      instructions:u                                                        
+       133,402,375      cache-references:u                                                    
+           505,904      cache-misses:u                                                        
+    67,275,943,630      L1-dcache-loads:u                                                     
+     7,198,528,939      L1-dcache-load-misses:u                                               
+         3,131,059      mem_load_l3_hit_retired.xsnp_hitm:u                                      
+        29,414,491      ocr.demand_rfo.l3_hit.snoop_hitm:u                                      
 
-       9.149239910 seconds time elapsed
+      12.009945596 seconds time elapsed
 
-      93.594824000 seconds user
-       0.555465000 seconds sys
+      40.551574000 seconds user
+       0.045936000 seconds sys
 
 

@@ -1,186 +1,84 @@
+#include <benchmark/benchmark.h>
 #include "slab.h"
-#include <algorithm>
-#include <atomic>
-#include <chrono>
-#include <cstdlib>
-#include <iostream>
-#include <thread>
-#include <vector>
-
 #include <jemalloc/jemalloc.h>
-
+#include <vector>
 using namespace AL;
 
-namespace
-{
-size_t worker_count()
-{
-    const unsigned hw = std::thread::hardware_concurrency();
-    if (hw == 0)
-        return 8;
-    return std::min<size_t>(hw, 8);
-}
+static constexpr size_t SVJSIZES[] = {8,16,32,64,128,256,512,1024};
 
-void wait_for_start(const std::atomic<bool>& start)
+static void BM_Slab_LongLived(benchmark::State& state)
 {
-    while (!start.load(std::memory_order_acquire))
-        std::this_thread::yield();
-}
-
-double ns_per_op(double elapsed_s, size_t ops)
-{
-    return (elapsed_s * 1e9) / static_cast<double>(ops);
-}
-
-double throughput(double elapsed_s, size_t ops)
-{
-    return static_cast<double>(ops) / elapsed_s / 1e6; // MOps/s
-}
-} // namespace
-
-int main()
-{
-    const size_t threads = worker_count();
-
-    std::cout << "=== Slab vs jemalloc (unbounded allocation) ===\n";
-    std::cout << "Threads: " << threads << "\n\n";
-
-    // Test 1: Single-threaded throughput with long-lived allocations
+    constexpr size_t hold = 1000, sz = 64;
+    default_slab s;
+    std::vector<void*> ptrs(hold);
+    for (auto _ : state)
     {
-        std::cout << "--- Test 1: Single-threaded long-lived alloc (hold 1000, then free) ---\n";
-        constexpr size_t hold = 1000;
-        constexpr size_t cycles = 1000;
-        constexpr size_t sz = 64;
-
-        std::vector<void*> ptrs(hold);
-
-        // Slab
-        default_slab ds{};
-        auto t0 = std::chrono::high_resolution_clock::now();
-        for (size_t c = 0; c < cycles; ++c)
-        {
-            for (size_t i = 0; i < hold; ++i)
-                ptrs[i] = ds.palloc(sz);
-            for (size_t i = 0; i < hold; ++i)
-                ds.free(ptrs[i], sz);
-        }
-        auto t1 = std::chrono::high_resolution_clock::now();
-        std::chrono::duration<double> ds_time = t1 - t0;
-        std::cout << "  Slab (TLC):   " << ns_per_op(ds_time.count(), cycles * hold * 2) << " ns/op | "
-                  << throughput(ds_time.count(), cycles * hold * 2) << " MOps/s\n";
-        std::cout << "  Capacity: " << ds.get_total_capacity() << "\n";
-
-        // jemalloc
-        t0 = std::chrono::high_resolution_clock::now();
-        for (size_t c = 0; c < cycles; ++c)
-        {
-            for (size_t i = 0; i < hold; ++i)
-                ptrs[i] = mallocx(sz, 0);
-            for (size_t i = 0; i < hold; ++i)
-                dallocx(ptrs[i], 0);
-        }
-        t1 = std::chrono::high_resolution_clock::now();
-        std::chrono::duration<double> je_time = t1 - t0;
-        std::cout << "  jemalloc:      " << ns_per_op(je_time.count(), cycles * hold * 2) << " ns/op | "
-                  << throughput(je_time.count(), cycles * hold * 2) << " MOps/s\n\n";
+        for (size_t i = 0; i < hold; ++i) ptrs[i] = s.palloc(sz);
+        for (size_t i = 0; i < hold; ++i) s.free(ptrs[i], sz);
     }
-
-    // Test 2: Multi-threaded with many long-lived allocations
-    {
-        std::cout << "--- Test 2: Multi-threaded long-lived (threads=" << threads << ", hold 500 each) ---\n";
-        constexpr size_t iters = 100;
-        constexpr size_t sz = 32;
-
-        auto run_mt = [&](const char* label, auto alloc_fn, auto free_fn) {
-            std::atomic<bool> start{false};
-            std::atomic<size_t> total_ops{0};
-            std::vector<std::thread> workers;
-            workers.reserve(threads);
-
-            auto t0 = std::chrono::high_resolution_clock::now();
-            for (size_t tid = 0; tid < threads; ++tid)
-            {
-                workers.emplace_back([&, tid] {
-                    size_t local_ops = 0;
-                    std::vector<void*> ptrs(500);
-                    wait_for_start(start);
-                    for (size_t i = 0; i < iters; ++i)
-                    {
-                        for (size_t j = 0; j < 500; ++j)
-                            ptrs[j] = alloc_fn();
-                        for (size_t j = 0; j < 500; ++j)
-                            free_fn(ptrs[j]);
-                        local_ops += 1000;
-                    }
-                    total_ops.fetch_add(local_ops, std::memory_order_relaxed);
-                });
-            }
-            start.store(true, std::memory_order_release);
-            for (auto& t : workers)
-                t.join();
-            auto t1 = std::chrono::high_resolution_clock::now();
-            std::chrono::duration<double> elapsed = t1 - t0;
-            size_t ops = total_ops.load();
-            std::cout << "  " << label << ": " << ns_per_op(elapsed.count(), ops) << " ns/op | " << throughput(elapsed.count(), ops) << " MOps/s\n";
-        };
-
-        default_slab ds{};
-        run_mt("Slab (TLC)", [&] { return ds.palloc(sz); }, [&](void* p) { ds.free(p, sz); });
-        run_mt("jemalloc    ", [&] { return mallocx(sz, 0); }, [](void* p) { dallocx(p, 0); });
-        std::cout << "\n";
-    }
-
-    // Test 3: Mixed sizes with concurrent allocation
-    {
-        std::cout << "--- Test 3: Multi-threaded mixed sizes (threads=" << threads << ") ---\n";
-        constexpr size_t iters = 200;
-        constexpr size_t sizes[] = {8, 16, 32, 64, 128, 256, 512, 1024};
-
-        auto run_mixed = [&](const char* label, auto alloc_fn, auto free_fn) {
-            std::atomic<bool> start{false};
-            std::atomic<size_t> total_ops{0};
-            std::vector<std::thread> workers;
-            workers.reserve(threads);
-
-            auto t0 = std::chrono::high_resolution_clock::now();
-            for (size_t tid = 0; tid < threads; ++tid)
-            {
-                workers.emplace_back([&, tid] {
-                    size_t local_ops = 0;
-                    std::vector<void*> ptrs(100);
-                    wait_for_start(start);
-                    for (size_t i = 0; i < iters; ++i)
-                    {
-                        for (size_t j = 0; j < 100; ++j)
-                        {
-                            size_t sz = sizes[(tid + i + j) % 8];
-                            ptrs[j] = alloc_fn(sz);
-                        }
-                        for (size_t j = 0; j < 100; ++j)
-                        {
-                            size_t sz = sizes[(tid + i + j) % 8];
-                            free_fn(ptrs[j], sz);
-                        }
-                        local_ops += 200;
-                    }
-                    total_ops.fetch_add(local_ops, std::memory_order_relaxed);
-                });
-            }
-            start.store(true, std::memory_order_release);
-            for (auto& t : workers)
-                t.join();
-            auto t1 = std::chrono::high_resolution_clock::now();
-            std::chrono::duration<double> elapsed = t1 - t0;
-            size_t ops = total_ops.load();
-            std::cout << "  " << label << ": " << ns_per_op(elapsed.count(), ops) << " ns/op | " << throughput(elapsed.count(), ops) << " MOps/s\n";
-        };
-
-        default_slab ds{};
-        run_mixed("Slab (TLC)", [&](size_t sz) { return ds.palloc(sz); }, [&](void* p, size_t sz) { ds.free(p, sz); });
-        run_mixed("jemalloc    ", [](size_t sz) { return mallocx(sz, 0); }, [](void* p, size_t) { dallocx(p, 0); });
-        std::cout << "\n";
-    }
-
-    std::cout << "=== Unbounded allocation comparison complete ===\n";
-    return 0;
+    state.SetItemsProcessed(state.iterations() * hold * 2);
 }
+BENCHMARK(BM_Slab_LongLived);
+
+static void BM_Jemalloc_LongLived(benchmark::State& state)
+{
+    constexpr size_t hold = 1000, sz = 64;
+    std::vector<void*> ptrs(hold);
+    for (auto _ : state)
+    {
+        for (size_t i = 0; i < hold; ++i) ptrs[i] = mallocx(sz, 0);
+        for (size_t i = 0; i < hold; ++i) dallocx(ptrs[i], 0);
+    }
+    state.SetItemsProcessed(state.iterations() * hold * 2);
+}
+BENCHMARK(BM_Jemalloc_LongLived);
+
+static void BM_Slab_MT_LongLived(benchmark::State& state)
+{
+    static default_slab* s = nullptr;
+    if (state.thread_index() == 0) s = new default_slab();
+    constexpr size_t hold = 500, sz = 32;
+    std::vector<void*> ptrs(hold);
+    for (auto _ : state)
+    {
+        for (size_t i = 0; i < hold; ++i) ptrs[i] = s->palloc(sz);
+        for (size_t i = 0; i < hold; ++i) s->free(ptrs[i], sz);
+    }
+    if (state.thread_index() == 0) { delete s; s = nullptr; }
+    state.SetItemsProcessed(state.iterations() * hold * 2);
+}
+BENCHMARK(BM_Slab_MT_LongLived)->ThreadRange(1, 8);
+
+static void BM_Jemalloc_MT_LongLived(benchmark::State& state)
+{
+    constexpr size_t hold = 500, sz = 32;
+    std::vector<void*> ptrs(hold);
+    for (auto _ : state)
+    {
+        for (size_t i = 0; i < hold; ++i) ptrs[i] = mallocx(sz, 0);
+        for (size_t i = 0; i < hold; ++i) dallocx(ptrs[i], 0);
+    }
+    state.SetItemsProcessed(state.iterations() * hold * 2);
+}
+BENCHMARK(BM_Jemalloc_MT_LongLived)->ThreadRange(1, 8);
+
+static void BM_Slab_Mixed(benchmark::State& state)
+{
+    static default_slab* s = nullptr;
+    if (state.thread_index() == 0) s = new default_slab();
+    size_t i = static_cast<size_t>(state.thread_index());
+    for (auto _ : state) { size_t sz=SVJSIZES[i%8]; void* p=s->palloc(sz); benchmark::DoNotOptimize(p); if(p) s->free(p,sz); ++i; }
+    if (state.thread_index() == 0) { delete s; s = nullptr; }
+    state.SetItemsProcessed(state.iterations() * 2);
+}
+BENCHMARK(BM_Slab_Mixed)->ThreadRange(1, 8);
+
+static void BM_Jemalloc_Mixed(benchmark::State& state)
+{
+    size_t i = 0;
+    for (auto _ : state) { size_t sz=SVJSIZES[i%8]; void* p=mallocx(sz,0); benchmark::DoNotOptimize(p); dallocx(p,0); ++i; }
+    state.SetItemsProcessed(state.iterations() * 2);
+}
+BENCHMARK(BM_Jemalloc_Mixed)->ThreadRange(1, 8);
+
+BENCHMARK_MAIN();

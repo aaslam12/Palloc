@@ -1,428 +1,92 @@
+#include <benchmark/benchmark.h>
 #include "slab.h"
-#include <chrono>
 #include <cstdlib>
-#include <iostream>
 #include <vector>
-
 using namespace AL;
 
-int main()
+static const size_t SIZES4[] = {32, 64, 128, 256};
+static const size_t SIZES4B[] = {16, 32, 64, 128};
+
+static void BM_Slab_MixedSizes(benchmark::State& state)
 {
-    const int MIXED_CYCLES = 10000;   // 10K cycles
-    const int ALLOCS_PER_CYCLE = 100; // 100 allocations per cycle
-    const int RAPID_OPS = 1000000;    // 1M rapid operations
-
-    std::cout << "\n========================================" << '\n';
-    std::cout << "Slab vs Malloc Performance Comparison" << '\n';
-    std::cout << "========================================\n" << '\n';
-
-    // ========================================================================
-    // Test 1: Mixed size allocations with varying patterns
-    // ========================================================================
+    default_slab s;
+    std::vector<std::pair<void*,size_t>> ptrs; ptrs.reserve(100);
+    for (auto _ : state)
     {
-        std::cout << "--- Test 1: Mixed Size Allocations ---" << '\n';
-        std::cout << "Cycles:           " << MIXED_CYCLES << '\n';
-        std::cout << "Allocs per cycle: " << ALLOCS_PER_CYCLE << '\n';
-        std::cout << "Sizes:            32, 64, 128, 256 bytes (rotating)" << '\n';
-
-        // Test with Slab
-        {
-            std::cout << "\n[Testing Slab]" << '\n';
-            AL::default_slab s{};
-
-            auto start = std::chrono::high_resolution_clock::now();
-
-            for (int cycle = 0; cycle < MIXED_CYCLES; ++cycle)
-            {
-                std::vector<std::pair<void*, size_t>> ptrs;
-
-                // Allocate with rotating sizes
-                for (int i = 0; i < ALLOCS_PER_CYCLE; ++i)
-                {
-                    size_t size;
-                    switch (i % 4)
-                    {
-                        case 0:
-                            size = 32;
-                            break;
-                        case 1:
-                            size = 64;
-                            break;
-                        case 2:
-                            size = 128;
-                            break;
-                        case 3:
-                            size = 256;
-                            break;
-                        default:
-                            size = 64;
-                    }
-
-                    void* ptr = s.palloc(size);
-                    if (ptr == nullptr)
-                    {
-                        std::cerr << "ERROR: Slab allocation failed at cycle " << cycle << ", iteration " << i << ", size " << size << '\n';
-                        return 1;
-                    }
-                    ptrs.push_back({ptr, size});
-                }
-
-                // Free all
-                for (auto [ptr, size] : ptrs)
-                {
-                    s.free(ptr, size);
-                }
-
-            }
-
-            auto end = std::chrono::high_resolution_clock::now();
-            std::chrono::duration<double> elapsed = end - start;
-            int total_ops = MIXED_CYCLES * ALLOCS_PER_CYCLE * 2; // alloc + free
-
-            std::cout << "Slab time:        " << elapsed.count() << " s" << '\n';
-            std::cout << "Total ops:        " << total_ops << " (allocs + frees)" << '\n';
-            std::cout << "Avg per op:       " << (elapsed.count() * 1e6 / total_ops) << " us" << '\n';
-            std::cout << "Ops per sec:      " << (total_ops / elapsed.count()) << '\n';
-        }
-
-        // Test with malloc/free
-        {
-            std::cout << "\n[Testing malloc/free]" << '\n';
-
-            auto start = std::chrono::high_resolution_clock::now();
-
-            for (int cycle = 0; cycle < MIXED_CYCLES; ++cycle)
-            {
-                std::vector<void*> ptrs;
-
-                // Allocate with rotating sizes
-                for (int i = 0; i < ALLOCS_PER_CYCLE; ++i)
-                {
-                    size_t size;
-                    switch (i % 4)
-                    {
-                        case 0:
-                            size = 32;
-                            break;
-                        case 1:
-                            size = 64;
-                            break;
-                        case 2:
-                            size = 128;
-                            break;
-                        case 3:
-                            size = 256;
-                            break;
-                        default:
-                            size = 64;
-                    }
-
-                    void* ptr = malloc(size);
-                    if (ptr == nullptr)
-                    {
-                        std::cerr << "ERROR: malloc failed at cycle " << cycle << ", iteration " << i << ", size " << size << '\n';
-                        return 1;
-                    }
-                    ptrs.push_back(ptr);
-                }
-
-                // Free all
-                for (void* ptr : ptrs)
-                {
-                    free(ptr);
-                }
-
-            }
-
-            auto end = std::chrono::high_resolution_clock::now();
-            std::chrono::duration<double> elapsed = end - start;
-            int total_ops = MIXED_CYCLES * ALLOCS_PER_CYCLE * 2; // alloc + free
-
-            std::cout << "malloc time:      " << elapsed.count() << " s" << '\n';
-            std::cout << "Total ops:        " << total_ops << " (allocs + frees)" << '\n';
-            std::cout << "Avg per op:       " << (elapsed.count() * 1e6 / total_ops) << " us" << '\n';
-            std::cout << "Ops per sec:      " << (total_ops / elapsed.count()) << '\n';
-        }
-
-        std::cout << "\n[PASSED] Test 1 completed\n" << '\n';
+        for (int i = 0; i < 100; ++i) ptrs.push_back({s.palloc(SIZES4[i%4]), SIZES4[i%4]});
+        for (auto& [p,sz] : ptrs) s.free(p, sz); ptrs.clear();
     }
-
-    // ========================================================================
-    // Test 2: Rapid single-size allocations
-    // ========================================================================
-    {
-        std::cout << "--- Test 2: Rapid Single-Size Allocations ---" << '\n';
-        std::cout << "Operations: " << RAPID_OPS << '\n';
-        std::cout << "Size:       64 bytes" << '\n';
-        std::cout << "Pattern:    Allocate immediately followed by free" << '\n';
-
-        // Test with Slab
-        {
-            std::cout << "\n[Testing Slab]" << '\n';
-            AL::default_slab s{};
-
-            auto start = std::chrono::high_resolution_clock::now();
-
-            for (int i = 0; i < RAPID_OPS; ++i)
-            {
-                void* ptr = s.palloc(64);
-                if (ptr == nullptr)
-                {
-                    std::cerr << "ERROR: Slab allocation failed at iteration " << i << '\n';
-                    return 1;
-                }
-                s.free(ptr, 64);
-
-            }
-
-            auto end = std::chrono::high_resolution_clock::now();
-            std::chrono::duration<double> elapsed = end - start;
-            int total_ops = RAPID_OPS * 2; // alloc + free
-
-            std::cout << "Slab time:        " << elapsed.count() << " s" << '\n';
-            std::cout << "Total ops:        " << total_ops << '\n';
-            std::cout << "Avg per op:       " << (elapsed.count() * 1e6 / total_ops) << " us" << '\n';
-            std::cout << "Ops per sec:      " << (total_ops / elapsed.count()) << '\n';
-        }
-
-        // Test with malloc/free
-        {
-            std::cout << "\n[Testing malloc/free]" << '\n';
-
-            auto start = std::chrono::high_resolution_clock::now();
-
-            for (int i = 0; i < RAPID_OPS; ++i)
-            {
-                void* ptr = malloc(64);
-                if (ptr == nullptr)
-                {
-                    std::cerr << "ERROR: malloc failed at iteration " << i << '\n';
-                    return 1;
-                }
-                free(ptr);
-
-            }
-
-            auto end = std::chrono::high_resolution_clock::now();
-            std::chrono::duration<double> elapsed = end - start;
-            int total_ops = RAPID_OPS * 2; // alloc + free
-
-            std::cout << "malloc time:      " << elapsed.count() << " s" << '\n';
-            std::cout << "Total ops:        " << total_ops << '\n';
-            std::cout << "Avg per op:       " << (elapsed.count() * 1e6 / total_ops) << " us" << '\n';
-            std::cout << "Ops per sec:      " << (total_ops / elapsed.count()) << '\n';
-        }
-
-        std::cout << "\n[PASSED] Test 2 completed\n" << '\n';
-    }
-
-    // ========================================================================
-    // Test 3: Small allocation pattern (common use case)
-    // ========================================================================
-    {
-        std::cout << "--- Test 3: Small Allocation Pattern ---" << '\n';
-        const int SMALL_OPS = 500000; // 500K operations
-        std::cout << "Operations: " << SMALL_OPS << '\n';
-        std::cout << "Sizes:      8, 16, 24, 32 bytes (realistic small objects)" << '\n';
-
-        // Test with Slab
-        {
-            std::cout << "\n[Testing Slab]" << '\n';
-            AL::default_slab s{};
-
-            auto start = std::chrono::high_resolution_clock::now();
-
-            for (int i = 0; i < SMALL_OPS; ++i)
-            {
-                size_t size = 8 + (i % 4) * 8; // 8, 16, 24, 32
-                void* ptr = s.palloc(size);
-                if (ptr == nullptr)
-                {
-                    std::cerr << "ERROR: Slab allocation failed at iteration " << i << ", size " << size << '\n';
-                    return 1;
-                }
-                s.free(ptr, size);
-
-            }
-
-            auto end = std::chrono::high_resolution_clock::now();
-            std::chrono::duration<double> elapsed = end - start;
-            int total_ops = SMALL_OPS * 2; // alloc + free
-
-            std::cout << "Slab time:        " << elapsed.count() << " s" << '\n';
-            std::cout << "Total ops:        " << total_ops << '\n';
-            std::cout << "Avg per op:       " << (elapsed.count() * 1e6 / total_ops) << " us" << '\n';
-            std::cout << "Ops per sec:      " << (total_ops / elapsed.count()) << '\n';
-        }
-
-        // Test with malloc/free
-        {
-            std::cout << "\n[Testing malloc/free]" << '\n';
-
-            auto start = std::chrono::high_resolution_clock::now();
-
-            for (int i = 0; i < SMALL_OPS; ++i)
-            {
-                size_t size = 8 + (i % 4) * 8; // 8, 16, 24, 32
-                void* ptr = malloc(size);
-                if (ptr == nullptr)
-                {
-                    std::cerr << "ERROR: malloc failed at iteration " << i << ", size " << size << '\n';
-                    return 1;
-                }
-                free(ptr);
-
-            }
-
-            auto end = std::chrono::high_resolution_clock::now();
-            std::chrono::duration<double> elapsed = end - start;
-            int total_ops = SMALL_OPS * 2; // alloc + free
-
-            std::cout << "malloc time:      " << elapsed.count() << " s" << '\n';
-            std::cout << "Total ops:        " << total_ops << '\n';
-            std::cout << "Avg per op:       " << (elapsed.count() * 1e6 / total_ops) << " us" << '\n';
-            std::cout << "Ops per sec:      " << (total_ops / elapsed.count()) << '\n';
-        }
-
-        std::cout << "\n[PASSED] Test 3 completed\n" << '\n';
-    }
-
-    // ========================================================================
-    // Test 4: Batch allocation with delayed free
-    // ========================================================================
-    {
-        std::cout << "--- Test 4: Batch Allocation with Delayed Free ---" << '\n';
-        const int BATCH_SIZE = 100;
-        const int BATCHES = 10000;
-        std::cout << "Batches:          " << BATCHES << '\n';
-        std::cout << "Allocs per batch: " << BATCH_SIZE << '\n';
-        std::cout << "Sizes:            16, 32, 64, 128 bytes" << '\n';
-
-        // Test with Slab (use larger scale for this test)
-        {
-            std::cout << "\n[Testing Slab]" << '\n';
-            AL::default_slab s{}; // Large scale to handle 10K batch with 25% being 128-byte (2.5K blocks needed)
-
-            auto start = std::chrono::high_resolution_clock::now();
-
-            for (int batch = 0; batch < BATCHES; ++batch)
-            {
-                std::vector<std::pair<void*, size_t>> ptrs;
-
-                // Allocate entire batch
-                for (int i = 0; i < BATCH_SIZE; ++i)
-                {
-                    size_t size;
-                    switch (i % 4)
-                    {
-                        case 0:
-                            size = 16;
-                            break;
-                        case 1:
-                            size = 32;
-                            break;
-                        case 2:
-                            size = 64;
-                            break;
-                        case 3:
-                            size = 128;
-                            break;
-                        default:
-                            size = 32;
-                    }
-
-                    void* ptr = s.palloc(size);
-                    if (ptr == nullptr)
-                    {
-                        std::cerr << "ERROR: Slab allocation failed at batch " << batch << ", iteration " << i << ", size " << size << '\n';
-                        return 1;
-                    }
-                    ptrs.push_back({ptr, size});
-                }
-
-                // Free entire batch
-                for (auto [ptr, size] : ptrs)
-                {
-                    s.free(ptr, size);
-                }
-
-            }
-
-            auto end = std::chrono::high_resolution_clock::now();
-            std::chrono::duration<double> elapsed = end - start;
-            int total_ops = BATCHES * BATCH_SIZE * 2; // alloc + free
-
-            std::cout << "Slab time:        " << elapsed.count() << " s" << '\n';
-            std::cout << "Total ops:        " << total_ops << '\n';
-            std::cout << "Avg per op:       " << (elapsed.count() * 1e6 / total_ops) << " us" << '\n';
-            std::cout << "Ops per sec:      " << (total_ops / elapsed.count()) << '\n';
-        }
-
-        // Test with malloc/free
-        {
-            std::cout << "\n[Testing malloc/free]" << '\n';
-
-            auto start = std::chrono::high_resolution_clock::now();
-
-            for (int batch = 0; batch < BATCHES; ++batch)
-            {
-                std::vector<void*> ptrs;
-
-                // Allocate entire batch
-                for (int i = 0; i < BATCH_SIZE; ++i)
-                {
-                    size_t size;
-                    switch (i % 4)
-                    {
-                        case 0:
-                            size = 16;
-                            break;
-                        case 1:
-                            size = 32;
-                            break;
-                        case 2:
-                            size = 64;
-                            break;
-                        case 3:
-                            size = 128;
-                            break;
-                        default:
-                            size = 32;
-                    }
-
-                    void* ptr = malloc(size);
-                    if (ptr == nullptr)
-                    {
-                        std::cerr << "ERROR: malloc failed at batch " << batch << ", iteration " << i << ", size " << size << '\n';
-                        return 1;
-                    }
-                    ptrs.push_back(ptr);
-                }
-
-                // Free entire batch
-                for (void* ptr : ptrs)
-                {
-                    free(ptr);
-                }
-
-            }
-
-            auto end = std::chrono::high_resolution_clock::now();
-            std::chrono::duration<double> elapsed = end - start;
-            int total_ops = BATCHES * BATCH_SIZE * 2; // alloc + free
-
-            std::cout << "malloc time:      " << elapsed.count() << " s" << '\n';
-            std::cout << "Total ops:        " << total_ops << '\n';
-            std::cout << "Avg per op:       " << (elapsed.count() * 1e6 / total_ops) << " us" << '\n';
-            std::cout << "Ops per sec:      " << (total_ops / elapsed.count()) << '\n';
-        }
-
-        std::cout << "\n[PASSED] Test 4 completed\n" << '\n';
-    }
-
-    std::cout << "========================================" << '\n';
-    std::cout << "[PASSED] All default_slab vs malloc tests passed!" << '\n';
-    std::cout << "========================================" << '\n';
-
-    return 0;
+    state.SetItemsProcessed(state.iterations() * 200);
 }
+BENCHMARK(BM_Slab_MixedSizes);
+
+static void BM_Malloc_MixedSizes(benchmark::State& state)
+{
+    std::vector<void*> ptrs; ptrs.reserve(100);
+    for (auto _ : state)
+    {
+        for (int i = 0; i < 100; ++i) ptrs.push_back(std::malloc(SIZES4[i%4]));
+        for (void* p : ptrs) std::free(p); ptrs.clear();
+    }
+    state.SetItemsProcessed(state.iterations() * 200);
+}
+BENCHMARK(BM_Malloc_MixedSizes);
+
+static void BM_Slab_Rapid64(benchmark::State& state)
+{
+    default_slab s;
+    for (auto _ : state) { void* p = s.palloc(64); benchmark::DoNotOptimize(p); s.free(p, 64); }
+    state.SetItemsProcessed(state.iterations() * 2);
+}
+BENCHMARK(BM_Slab_Rapid64);
+
+static void BM_Malloc_Rapid64(benchmark::State& state)
+{
+    for (auto _ : state) { void* p = std::malloc(64); benchmark::DoNotOptimize(p); std::free(p); }
+    state.SetItemsProcessed(state.iterations() * 2);
+}
+BENCHMARK(BM_Malloc_Rapid64);
+
+static void BM_Slab_Small(benchmark::State& state)
+{
+    default_slab s;
+    size_t i = 0;
+    for (auto _ : state) { size_t sz = 8+(i%4)*8; void* p = s.palloc(sz); benchmark::DoNotOptimize(p); s.free(p,sz); ++i; }
+    state.SetItemsProcessed(state.iterations() * 2);
+}
+BENCHMARK(BM_Slab_Small);
+
+static void BM_Malloc_Small(benchmark::State& state)
+{
+    size_t i = 0;
+    for (auto _ : state) { size_t sz = 8+(i%4)*8; void* p = std::malloc(sz); benchmark::DoNotOptimize(p); std::free(p); ++i; }
+    state.SetItemsProcessed(state.iterations() * 2);
+}
+BENCHMARK(BM_Malloc_Small);
+
+static void BM_Slab_BatchDelayed(benchmark::State& state)
+{
+    default_slab s;
+    std::vector<std::pair<void*,size_t>> ptrs; ptrs.reserve(100);
+    for (auto _ : state)
+    {
+        for (int i = 0; i < 100; ++i) ptrs.push_back({s.palloc(SIZES4B[i%4]), SIZES4B[i%4]});
+        for (auto& [p,sz] : ptrs) s.free(p,sz); ptrs.clear();
+    }
+    state.SetItemsProcessed(state.iterations() * 200);
+}
+BENCHMARK(BM_Slab_BatchDelayed);
+
+static void BM_Malloc_BatchDelayed(benchmark::State& state)
+{
+    std::vector<void*> ptrs; ptrs.reserve(100);
+    for (auto _ : state)
+    {
+        for (int i = 0; i < 100; ++i) ptrs.push_back(std::malloc(SIZES4B[i%4]));
+        for (void* p : ptrs) std::free(p); ptrs.clear();
+    }
+    state.SetItemsProcessed(state.iterations() * 200);
+}
+BENCHMARK(BM_Malloc_BatchDelayed);
+
+BENCHMARK_MAIN();

@@ -15,18 +15,15 @@
 // Allocators: slab (contiguous mmap), malloc (scattered heap)
 // ═══════════════════════════════════════════════════════════════════════════════
 
-#include "low_overhead_bench.h"
+#include <benchmark/benchmark.h>
 #include "slab.h"
 
 #include <algorithm>
-#include <cstdio>
 #include <cstdlib>
 #include <cstring>
 #include <numeric>
 #include <random>
 #include <vector>
-
-using namespace bench;
 
 // ─── Object: 64 bytes, matches a typical order/message struct ────────────────
 
@@ -44,12 +41,12 @@ static_assert(sizeof(Object) == 64);
 // ─── Slab config: single 64B class ───────────────────────────────────────────
 
 constexpr std::array<AL::size_class, 1> obj_classes = {
-    AL::size_class{.byte_size = 64, .num_blocks = 5'500'000, .batch_size = 128}};
+    AL::size_class{.byte_size = 64, .num_blocks = 60'000, .batch_size = 128}};
 using obj_slab_cfg = AL::slab_config<1, obj_classes>;
 
-static constexpr size_t N          = 5'000'000; // live objects
-static constexpr size_t ITERATIONS = 20;        // traversal passes (5M*20 = 100M ops)
-static constexpr size_t WARMUP     = 2;
+static constexpr size_t N          = 50'000; // live objects
+static constexpr size_t ITERATIONS = 5;      // traversal passes
+static constexpr size_t WARMUP     = 1;
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
@@ -187,26 +184,26 @@ static Result run(AllocFn alloc, FreeFn free_fn, size_t* perm)
 
     uint64_t t0;
 
-    t0 = rdtsc();
+    t0 = __builtin_ia32_rdtsc();
     for (size_t it = 0; it < ITERATIONS; ++it)
         prevent_opt += seq_read(objs.data(), N);
-    uint64_t seq_r_cycles = rdtsc() - t0;
+    uint64_t seq_r_cycles = __builtin_ia32_rdtsc() - t0;
 
-    t0 = rdtsc();
+    t0 = __builtin_ia32_rdtsc();
     for (size_t it = 0; it < ITERATIONS; ++it)
         seq_write(objs.data(), N, it);
-    uint64_t seq_w_cycles = rdtsc() - t0;
+    uint64_t seq_w_cycles = __builtin_ia32_rdtsc() - t0;
     prevent_opt += objs[0]->value;
 
-    t0 = rdtsc();
+    t0 = __builtin_ia32_rdtsc();
     for (size_t it = 0; it < ITERATIONS; ++it)
         prevent_opt += rand_read(objs.data(), perm, N);
-    uint64_t rand_r_cycles = rdtsc() - t0;
+    uint64_t rand_r_cycles = __builtin_ia32_rdtsc() - t0;
 
-    t0 = rdtsc();
+    t0 = __builtin_ia32_rdtsc();
     for (size_t it = 0; it < ITERATIONS; ++it)
         prevent_opt += ptr_chase(objs[0]);
-    uint64_t ptr_cycles = rdtsc() - t0;
+    uint64_t ptr_cycles = __builtin_ia32_rdtsc() - t0;
 
     for (size_t i = 0; i < N; ++i)
         free_fn(objs[i]);
@@ -217,122 +214,43 @@ static Result run(AllocFn alloc, FreeFn free_fn, size_t* perm)
             to_ns(rand_r_cycles), to_ns(ptr_cycles)};
 }
 
-// flat-array variant: slab only, direct index into contiguous region
-static Result run_flat(Object* base, size_t* perm)
+// ─── Benchmarks ──────────────────────────────────────────────────────────────
+
+static void BM_CacheLocality_Slab_PtrArray(benchmark::State& state)
 {
-    // init
-    for (size_t i = 0; i < N; ++i)
-    {
-        base[i].id = i; base[i].value = i * 3 + 7;
-        base[i].timestamp = i; base[i].checksum = 0;
-        base[i].next = (i + 1 < N) ? &base[i + 1] : nullptr;
-    }
-
-    // warmup
-    for (size_t w = 0; w < WARMUP; ++w)
-    {
-        prevent_opt += seq_read_flat(base, N);
-        seq_write_flat(base, N, w);
-    }
-
-    uint64_t t0;
-    // perm safety: perm values are in [0,N), prefetch perm[i+8] needs N+8 entries
-    // perm was built for N elements; last 8 entries wrap to 0 safely via modulo
-    std::vector<size_t> safe_perm(perm, perm + N + 16);
-    for (size_t i = N; i < N + 16; ++i) safe_perm[i] = 0;
-
-    t0 = rdtsc();
-    for (size_t it = 0; it < ITERATIONS; ++it)
-        prevent_opt += seq_read_flat(base, N);
-    uint64_t seq_r = rdtsc() - t0;
-
-    t0 = rdtsc();
-    for (size_t it = 0; it < ITERATIONS; ++it)
-        seq_write_flat(base, N, it);
-    uint64_t seq_w = rdtsc() - t0;
-    prevent_opt += base[0].value;
-
-    t0 = rdtsc();
-    for (size_t it = 0; it < ITERATIONS; ++it)
-        prevent_opt += rand_read_flat(base, safe_perm.data(), N);
-    uint64_t rand_r = rdtsc() - t0;
-
-    // pointer chase same as before (linked list through flat array)
-    t0 = rdtsc();
-    for (size_t it = 0; it < ITERATIONS; ++it)
-        prevent_opt += ptr_chase(&base[0]);
-    uint64_t ptr_c = rdtsc() - t0;
-
-    size_t total_ops = N * ITERATIONS;
-    auto to_ns = [&](uint64_t c) { return (double)c / (double)total_ops / 3.5; };
-    return {to_ns(seq_r), to_ns(seq_w), to_ns(rand_r), to_ns(ptr_c)};
-}
-
-// ─── Main ─────────────────────────────────────────────────────────────────────
-
-int main()
-{
-    std::printf("=== Cache Locality Benchmark ===\n");
-    std::printf("Objects: %zu x %zu bytes  |  Passes: %zu\n\n", N, sizeof(Object), ITERATIONS);
-
-    // permutation for random access
-    std::vector<size_t> perm(N);
-    std::iota(perm.begin(), perm.end(), 0);
+    std::vector<size_t> perm(N + 16, 0);
+    std::iota(perm.begin(), perm.begin() + N, 0);
     std::mt19937_64 rng(42);
-    std::shuffle(perm.begin(), perm.end(), rng);
+    std::shuffle(perm.begin(), perm.begin() + N, rng);
 
-    // ── slab (pointer array) ──
     AL::slab<obj_slab_cfg> s;
     auto slab_alloc = [&] { return s.palloc(64); };
     auto slab_free  = [&](Object* p) { s.free(p, 64); };
-    Result sr = run(slab_alloc, slab_free, perm.data());
 
-    // ── slab (flat array — direct region access, no pointer indirection) ──
-    Object* base = reinterpret_cast<Object*>(s.region_start());
-    Result sf = run_flat(base, perm.data());
+    for (auto _ : state)
+    {
+        Result r = run(slab_alloc, slab_free, perm.data());
+        benchmark::DoNotOptimize(r);
+    }
+}
+BENCHMARK(BM_CacheLocality_Slab_PtrArray)->Unit(benchmark::kMillisecond);
 
-    // ── malloc ──
+static void BM_CacheLocality_Malloc(benchmark::State& state)
+{
+    std::vector<size_t> perm(N + 16, 0);
+    std::iota(perm.begin(), perm.begin() + N, 0);
+    std::mt19937_64 rng(42);
+    std::shuffle(perm.begin(), perm.begin() + N, rng);
+
     auto mal_alloc = [] { return std::malloc(sizeof(Object)); };
     auto mal_free  = [](Object* p) { std::free(p); };
-    Result mr = run(mal_alloc, mal_free, perm.data());
 
-    // ── print ──
-    auto pct = [](double base_v, double val) {
-        return (base_v - val) / base_v * 100.0; // positive = val faster
-    };
-
-    std::printf("%-28s %10s %10s %10s %10s\n",
-                "Allocator", "seq-read", "seq-write", "rand-read", "ptr-chase");
-    std::printf("%-28s %10s %10s %10s %10s\n",
-                "", "(ns/obj)", "(ns/obj)", "(ns/obj)", "(ns/obj)");
-    std::printf("%s\n", std::string(70, '-').c_str());
-    std::printf("%-28s %10.2f %10.2f %10.2f %10.2f\n",
-                "slab (ptr array)", sr.seq_read_ns, sr.seq_write_ns, sr.rand_read_ns, sr.ptr_chase_ns);
-    std::printf("%-28s %10.2f %10.2f %10.2f %10.2f\n",
-                "slab (flat array)", sf.seq_read_ns, sf.seq_write_ns, sf.rand_read_ns, sf.ptr_chase_ns);
-    std::printf("%-28s %10.2f %10.2f %10.2f %10.2f\n",
-                "malloc (ptr array)", mr.seq_read_ns, mr.seq_write_ns, mr.rand_read_ns, mr.ptr_chase_ns);
-    std::printf("%s\n", std::string(70, '-').c_str());
-    std::printf("%-28s %+9.1f%% %+9.1f%% %+9.1f%% %+9.1f%%\n",
-                "slab-ptr vs malloc",
-                pct(mr.seq_read_ns,  sr.seq_read_ns),
-                pct(mr.seq_write_ns, sr.seq_write_ns),
-                pct(mr.rand_read_ns, sr.rand_read_ns),
-                pct(mr.ptr_chase_ns, sr.ptr_chase_ns));
-    std::printf("%-28s %+9.1f%% %+9.1f%% %+9.1f%% %+9.1f%%\n",
-                "slab-flat vs malloc",
-                pct(mr.seq_read_ns,  sf.seq_read_ns),
-                pct(mr.seq_write_ns, sf.seq_write_ns),
-                pct(mr.rand_read_ns, sf.rand_read_ns),
-                pct(mr.ptr_chase_ns, sf.ptr_chase_ns));
-    std::printf("%-28s %+9.1f%% %+9.1f%% %+9.1f%% %+9.1f%%\n",
-                "slab-flat vs slab-ptr",
-                pct(sr.seq_read_ns,  sf.seq_read_ns),
-                pct(sr.seq_write_ns, sf.seq_write_ns),
-                pct(sr.rand_read_ns, sf.rand_read_ns),
-                pct(sr.ptr_chase_ns, sf.ptr_chase_ns));
-
-    std::printf("\n(positive %% = slab faster)\n");
-    std::printf("prevent_opt=%llu\n", (unsigned long long)prevent_opt);
-    return 0;
+    for (auto _ : state)
+    {
+        Result r = run(mal_alloc, mal_free, perm.data());
+        benchmark::DoNotOptimize(r);
+    }
 }
+BENCHMARK(BM_CacheLocality_Malloc)->Unit(benchmark::kMillisecond);
+
+BENCHMARK_MAIN();

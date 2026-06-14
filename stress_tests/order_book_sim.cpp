@@ -6,21 +6,20 @@
 // pointers, written and read during book operations. Tests fixed-size
 // allocation under realistic churn patterns.
 //
-// Allocators tested: Pool, Slab (custom config), Dynamic Slab, jemalloc, malloc
-// Modes: Single-threaded and Multi-threaded (shared allocator, per-thread books)
+// Allocators tested: Pool, Slab (custom config), jemalloc, malloc
+// Mode: Single-threaded
 // ═══════════════════════════════════════════════════════════════════════════════
 
-#include "dynamic_slab.h"
-#include "low_overhead_bench.h"
+#include <benchmark/benchmark.h>
 #include "pool.h"
 #include "slab.h"
 
 #include <jemalloc/jemalloc.h>
+#include <x86intrin.h>
 
 #include <algorithm>
 #include <atomic>
 #include <chrono>
-#include <cstdio>
 #include <cstdlib>
 #include <cstring>
 #include <numeric>
@@ -29,21 +28,15 @@
 #include <vector>
 
 using namespace AL;
-using namespace bench;
 
 // ─── Test parameters ─────────────────────────────────────────────────────────
 
 static constexpr int PRICE_RANGE = 1000;
 static constexpr int WARMUP_ORDERS = 5000;
-static constexpr int DURATION_SECS = 7;
-static constexpr size_t LATENCY_CAPACITY = 262'144;
-static constexpr size_t POOL_CAPACITY = 500'000;
-static constexpr size_t LATENCY_SAMPLE_MASK = 16383; // sample every 16K ops (was 1K)
-static constexpr size_t DEADLINE_CHECK_MASK = 4095;  // check time every 4K ops
+static constexpr size_t POOL_CAPACITY   = 500'000;
+static constexpr size_t OPS_LIMIT       = 1'000'000;
 
-// ─── Order struct — realistic trading order ──────────────────────────────────
-// Laid out to match a real order entry with doubly-linked list pointers
-// for O(1) insert/remove at price levels. sizeof(Order) = 64 bytes.
+// ─── Order struct ─────────────────────────────────────────────────────────────
 
 struct Order
 {
@@ -53,8 +46,8 @@ struct Order
     uint32_t quantity;
     uint32_t remaining_qty;
     uint16_t symbol_id;
-    uint8_t side;       // 0 = bid, 1 = ask
-    uint8_t order_type; // 0 = limit
+    uint8_t side;
+    uint8_t order_type;
     uint32_t tracker_idx;
     Order* prev;
     Order* next;
@@ -62,13 +55,13 @@ struct Order
 
 static_assert(sizeof(Order) <= 64, "Order must fit in 64-byte slab class");
 
-// ─── Custom slab config: single 64B class with high capacity ─────────────────
+// ─── Custom slab config ───────────────────────────────────────────────────────
 
 constexpr std::array<size_class, 1> order_slab_classes = {
     size_class{.byte_size = 64, .num_blocks = POOL_CAPACITY, .batch_size = 128}};
 using order_slab_cfg = slab_config<1, order_slab_classes>;
 
-// ─── Price level (doubly-linked list of orders at one price) ─────────────────
+// ─── Price level ─────────────────────────────────────────────────────────────
 
 struct PriceLevel
 {
@@ -80,24 +73,18 @@ struct PriceLevel
     {
         ord->prev = tail;
         ord->next = nullptr;
-        if (tail)
-            tail->next = ord;
-        else
-            head = ord;
+        if (tail) tail->next = ord;
+        else head = ord;
         tail = ord;
         count++;
     }
 
     void remove(Order* ord)
     {
-        if (ord->prev)
-            ord->prev->next = ord->next;
-        else
-            head = ord->next;
-        if (ord->next)
-            ord->next->prev = ord->prev;
-        else
-            tail = ord->prev;
+        if (ord->prev) ord->prev->next = ord->next;
+        else head = ord->next;
+        if (ord->next) ord->next->prev = ord->prev;
+        else tail = ord->prev;
         count--;
     }
 
@@ -106,61 +93,24 @@ struct PriceLevel
         if (!head) return nullptr;
         Order* ord = head;
         head = ord->next;
-        if (head)
-            head->prev = nullptr;
-        else
-            tail = nullptr;
+        if (head) head->prev = nullptr;
+        else tail = nullptr;
         count--;
         return ord;
     }
 };
 
-// ─── Latency recorder (fixed-size, no heap allocation) ───────────────────────
-
-struct LatencyRecorder
-{
-    alignas(64) uint64_t samples[LATENCY_CAPACITY];
-    size_t idx = 0;
-
-    void record(uint64_t ns)
-    {
-        if (idx < LATENCY_CAPACITY)
-            samples[idx++] = ns;
-    }
-
-    struct Stats
-    {
-        uint64_t p50 = 0, p90 = 0, p99 = 0, p999 = 0;
-        double mean = 0;
-    };
-
-    Stats compute()
-    {
-        if (idx == 0)
-            return {};
-        std::sort(samples, samples + idx);
-        Stats s;
-        s.p50 = samples[idx * 50 / 100];
-        s.p90 = samples[idx * 90 / 100];
-        s.p99 = samples[idx * 99 / 100];
-        s.p999 = samples[idx * 999 / 1000];
-        double sum = std::accumulate(samples, samples + idx, 0.0);
-        s.mean = sum / static_cast<double>(idx);
-        return s;
-    }
-};
-
-// ─── Benchmark result ────────────────────────────────────────────────────────
+// ─── Benchmark result ─────────────────────────────────────────────────────────
 
 struct BenchResult
 {
     const char* name;
     size_t ops;
     double elapsed_sec;
-    LatencyRecorder::Stats latency;
+    uint64_t cycles;
 };
 
-// ─── Order book ──────────────────────────────────────────────────────────────
+// ─── Order book ───────────────────────────────────────────────────────────────
 
 struct OrderBook
 {
@@ -226,8 +176,6 @@ struct OrderBook
         return live_orders[idx];
     }
 
-    // Execute crossing orders at the top of the book.
-    // Returns number of orders freed.
     template <typename FreeFn>
     size_t execute_top(FreeFn free_fn)
     {
@@ -243,9 +191,8 @@ struct OrderBook
                 break;
             }
 
-            // Simulate fill
             uint32_t fill_qty = std::min(bid->remaining_qty, ask->remaining_qty);
-            escape(&fill_qty);
+            benchmark::DoNotOptimize(fill_qty);
 
             remove_from_tracker(bid);
             remove_from_tracker(ask);
@@ -262,7 +209,7 @@ struct OrderBook
     }
 };
 
-// ─── Single-threaded test runner ─────────────────────────────────────────────
+// ─── Single-threaded test runner ──────────────────────────────────────────────
 
 template <typename AllocFn, typename FreeFn>
 BenchResult run_st(const char* name, AllocFn alloc_fn, FreeFn free_fn)
@@ -276,7 +223,6 @@ BenchResult run_st(const char* name, AllocFn alloc_fn, FreeFn free_fn)
     std::uniform_int_distribution<uint32_t> qty_dist(1, 1000);
     std::uniform_int_distribution<int> side_dist(0, 1);
 
-    LatencyRecorder recorder;
     uint64_t order_id = 0;
     size_t ops = 0;
 
@@ -299,22 +245,15 @@ BenchResult run_st(const char* name, AllocFn alloc_fn, FreeFn free_fn)
         book.add_order(ord);
     }
 
-    DeadlineTimer timer(DURATION_SECS);
     auto start = std::chrono::high_resolution_clock::now();
+    uint64_t t0 = __rdtsc();
 
-    for (;;)
+    while (ops < OPS_LIMIT)
     {
-        if ((ops & DEADLINE_CHECK_MASK) == 0 && timer.is_done())
-            break;
-
-        bool sample = (ops & LATENCY_SAMPLE_MASK) == 0;
-        uint64_t t0 = sample ? rdtsc() : 0;
-
         int action = action_dist(rng);
 
         if (action < 45 || book.live_orders.size() < 100)
         {
-            // ADD ORDER (45%)
             void* mem = alloc_fn();
             if (mem)
             {
@@ -329,33 +268,28 @@ BenchResult run_st(const char* name, AllocFn alloc_fn, FreeFn free_fn)
                 ord->order_type = 0;
                 ord->prev = nullptr;
                 ord->next = nullptr;
-                escape(ord);
-                clobber();
+                benchmark::DoNotOptimize(ord);
                 book.add_order(ord);
             }
         }
         else if (action < 75)
         {
-            // CANCEL ORDER (30%)
             Order* ord = book.pick_random(rng);
             if (ord)
             {
                 volatile uint64_t oid = ord->order_id;
                 volatile double p = ord->price;
-                (void)oid;
-                (void)p;
+                (void)oid; (void)p;
                 book.cancel_order(ord);
                 free_fn(ord);
             }
         }
         else if (action < 90)
         {
-            // EXECUTE TOP OF BOOK (15%)
             book.execute_top([&](Order* ord) { free_fn(ord); });
         }
         else
         {
-            // MODIFY ORDER (10%): cancel + re-add with new price
             Order* ord = book.pick_random(rng);
             if (ord)
             {
@@ -375,322 +309,79 @@ BenchResult run_st(const char* name, AllocFn alloc_fn, FreeFn free_fn)
                     new_ord->order_type = 0;
                     new_ord->prev = nullptr;
                     new_ord->next = nullptr;
-                    escape(new_ord);
-                    clobber();
+                    benchmark::DoNotOptimize(new_ord);
                     book.add_order(new_ord);
                 }
             }
         }
 
-        if (sample)
-        {
-            uint64_t elapsed = rdtsc() - t0;
-            recorder.record(elapsed);
-        }
         ops++;
     }
 
+    uint64_t total_cycles = __rdtsc() - t0;
     double total_elapsed = std::chrono::duration<double>(std::chrono::high_resolution_clock::now() - start).count();
 
-    // Cleanup
     for (Order* ord : book.live_orders)
         free_fn(ord);
     book.live_orders.clear();
 
-    return {name, ops, total_elapsed, recorder.compute()};
+    return {name, ops, total_elapsed, total_cycles};
 }
 
-// ─── Multi-threaded test runner ──────────────────────────────────────────────
-// Each thread operates its own order book, all sharing one allocator.
-// This models per-symbol processing on separate cores.
+// ─── Benchmarks ───────────────────────────────────────────────────────────────
 
-template <typename AllocFn, typename FreeFn>
-BenchResult run_mt(const char* name, size_t num_threads, AllocFn alloc_fn, FreeFn free_fn)
+static void BM_OrderBook_Pool_ST(benchmark::State& state)
 {
-    std::atomic<bool> go{false};
-    std::atomic<bool> done{false};
-    std::atomic<size_t> total_ops{0};
-    std::vector<LatencyRecorder> recorders(num_threads);
-
-    std::vector<std::thread> threads;
-    threads.reserve(num_threads);
-
-    auto start = std::chrono::high_resolution_clock::now();
-
-    // Deadline timer thread
-    std::thread timer([&] {
-        std::this_thread::sleep_for(std::chrono::seconds(DURATION_SECS));
-        done.store(true, std::memory_order_relaxed);
-    });
-
-    for (size_t tid = 0; tid < num_threads; tid++)
+    uint64_t total_cycles = 0;
+    for (auto _ : state)
     {
-        threads.emplace_back([&, tid] {
-            while (!go.load(std::memory_order_acquire))
-                ;
-
-            OrderBook book;
-            book.reserve(POOL_CAPACITY / num_threads);
-
-            std::mt19937 rng(42 + tid);
-            std::uniform_int_distribution<int> action_dist(0, 99);
-            std::uniform_int_distribution<int> price_dist(100, 899);
-            std::uniform_int_distribution<uint32_t> qty_dist(1, 1000);
-            std::uniform_int_distribution<int> side_dist(0, 1);
-
-            uint64_t order_id = tid * 100'000'000;
-            size_t ops = 0;
-
-            // Warmup
-            for (int i = 0; i < WARMUP_ORDERS / static_cast<int>(num_threads); i++)
-            {
-                void* mem = alloc_fn();
-                if (!mem) break;
-                auto* ord = static_cast<Order*>(mem);
-                ord->order_id = order_id++;
-                ord->timestamp = ops;
-                ord->price = price_dist(rng);
-                ord->quantity = qty_dist(rng);
-                ord->remaining_qty = ord->quantity;
-                ord->symbol_id = static_cast<uint16_t>(tid);
-                ord->side = static_cast<uint8_t>(side_dist(rng));
-                ord->order_type = 0;
-                ord->prev = nullptr;
-                ord->next = nullptr;
-                book.add_order(ord);
-            }
-
-            for (;;)
-            {
-                if ((ops & DEADLINE_CHECK_MASK) == 0 && done.load(std::memory_order_relaxed))
-                    break;
-
-                bool sample = (ops & LATENCY_SAMPLE_MASK) == 0;
-                uint64_t t0 = sample ? rdtsc() : 0;
-                int action = action_dist(rng);
-
-                if (action < 45 || book.live_orders.size() < 50)
-                {
-                    void* mem = alloc_fn();
-                    if (mem)
-                    {
-                        auto* ord = static_cast<Order*>(mem);
-                        ord->order_id = order_id++;
-                        ord->timestamp = ops;
-                        ord->price = price_dist(rng);
-                        ord->quantity = qty_dist(rng);
-                        ord->remaining_qty = ord->quantity;
-                        ord->symbol_id = static_cast<uint16_t>(tid);
-                        ord->side = static_cast<uint8_t>(side_dist(rng));
-                        ord->order_type = 0;
-                        ord->prev = nullptr;
-                        ord->next = nullptr;
-                        escape(ord);
-                        clobber();
-                        book.add_order(ord);
-                    }
-                }
-                else if (action < 75)
-                {
-                    Order* ord = book.pick_random(rng);
-                    if (ord)
-                    {
-                        escape(ord);
-                        book.cancel_order(ord);
-                        free_fn(ord);
-                    }
-                }
-                else if (action < 90)
-                {
-                    book.execute_top([&](Order* ord) { free_fn(ord); });
-                }
-                else
-                {
-                    Order* ord = book.pick_random(rng);
-                    if (ord)
-                    {
-                        book.cancel_order(ord);
-                        free_fn(ord);
-                        void* mem = alloc_fn();
-                        if (mem)
-                        {
-                            auto* new_ord = static_cast<Order*>(mem);
-                            new_ord->order_id = order_id++;
-                            new_ord->timestamp = ops;
-                            new_ord->price = price_dist(rng);
-                            new_ord->quantity = qty_dist(rng);
-                            new_ord->remaining_qty = new_ord->quantity;
-                            new_ord->symbol_id = static_cast<uint16_t>(tid);
-                            new_ord->side = static_cast<uint8_t>(side_dist(rng));
-                            new_ord->order_type = 0;
-                            new_ord->prev = nullptr;
-                            new_ord->next = nullptr;
-                            escape(new_ord);
-                            clobber();
-                            book.add_order(new_ord);
-                        }
-                    }
-                }
-
-                if (sample)
-                {
-                    uint64_t elapsed = rdtsc() - t0;
-                    recorders[tid].record(elapsed);
-                }
-                ops++;
-            }
-
-            // Cleanup
-            for (Order* ord : book.live_orders)
-                free_fn(ord);
-            book.live_orders.clear();
-
-            total_ops.fetch_add(ops, std::memory_order_relaxed);
-        });
+        pool<> p(sizeof(Order), POOL_CAPACITY);
+        auto r = run_st("Pool", [&]()->void*{return p.alloc();}, [&](Order*o){p.free(o);});
+        total_cycles += r.cycles;
+        benchmark::DoNotOptimize(r.ops);
     }
-
-    go.store(true, std::memory_order_release);
-    for (auto& t : threads)
-        t.join();
-
-    timer.join();
-    double total_elapsed = std::chrono::duration<double>(std::chrono::high_resolution_clock::now() - start).count();
-
-    // Merge latency samples from all threads
-    LatencyRecorder merged;
-    for (auto& rec : recorders)
-        for (size_t i = 0; i < rec.idx; i++)
-            merged.record(rec.samples[i]);
-
-    return {name, total_ops.load(), total_elapsed, merged.compute()};
+    state.counters["cycles/op"] = (double)total_cycles / (double)(state.iterations() * OPS_LIMIT);
 }
+BENCHMARK(BM_OrderBook_Pool_ST)->Unit(benchmark::kMillisecond);
 
-// ─── Print helpers ───────────────────────────────────────────────────────────
-
-void print_results(const char* title, const std::vector<BenchResult>& results)
+static void BM_OrderBook_Slab_ST(benchmark::State& state)
 {
-    printf("\n━━━ %s ━━━\n\n", title);
-
-    printf("  %-22s %10s %12s\n", "Allocator", "ns/op", "MOps/s");
-    printf("  ──────────────────────────────────────────────\n");
-    for (const auto& r : results)
+    uint64_t total_cycles = 0;
+    for (auto _ : state)
     {
-        double ns = (r.elapsed_sec * 1e9) / static_cast<double>(r.ops);
-        double mops = static_cast<double>(r.ops) / r.elapsed_sec / 1e6;
-        printf("  %-22s %8.1f %12.1f\n", r.name, ns, mops);
+        slab<order_slab_cfg> s{};
+        auto r = run_st("Slab", [&]()->void*{return s.palloc(sizeof(Order));}, [&](Order*o){s.free(o,sizeof(Order));});
+        total_cycles += r.cycles;
+        benchmark::DoNotOptimize(r.ops);
     }
-
-    printf("\n  %-22s %8s %8s %8s %8s %8s\n", "Allocator", "p50", "p90", "p99", "p99.9", "mean");
-    printf("  ──────────────────────────────────────────────────────────────\n");
-    for (const auto& r : results)
-    {
-        printf("  %-22s %6lu %8lu %8lu %8lu %8.1f ns\n",
-               r.name, r.latency.p50, r.latency.p90, r.latency.p99, r.latency.p999, r.latency.mean);
-    }
+    state.counters["cycles/op"] = (double)total_cycles / (double)(state.iterations() * OPS_LIMIT);
 }
+BENCHMARK(BM_OrderBook_Slab_ST)->Unit(benchmark::kMillisecond);
 
-// ─── Main ────────────────────────────────────────────────────────────────────
-
-int main()
+static void BM_OrderBook_Jemalloc_ST(benchmark::State& state)
 {
-    printf("╔══════════════════════════════════════════════════════════════╗\n");
-    printf("║     Order Book Simulation — Realistic Allocator Benchmark  ║\n");
-    printf("╠══════════════════════════════════════════════════════════════╣\n");
-    printf("║  Ops: 45%% add, 30%% cancel, 15%% execute, 10%% modify       ║\n");
-    printf("║  Order struct: %zu bytes, linked-list book operations       ║\n", sizeof(Order));
-    printf("║  Duration: %d seconds per allocator                         ║\n", DURATION_SECS);
-    printf("╚══════════════════════════════════════════════════════════════╝\n");
-
-    constexpr size_t order_size = sizeof(Order);
-
-    // ── Single-threaded ──────────────────────────────────────────────────
+    uint64_t total_cycles = 0;
+    for (auto _ : state)
     {
-        std::vector<BenchResult> results;
-
-        {
-            pool p(order_size, POOL_CAPACITY);
-            results.push_back(run_st(
-                "Pool",
-                [&]() -> void* { return p.alloc(); },
-                [&](Order* o) { p.free(o); }));
-        }
-        {
-            slab<order_slab_cfg> s{};
-            results.push_back(run_st(
-                "Slab (TLC)",
-                [&]() -> void* { return s.palloc(order_size); },
-                [&](Order* o) { s.free(o, order_size); }));
-        }
-        {
-            default_dynamic_slab ds{};
-            results.push_back(run_st(
-                "Dynamic Slab",
-                [&]() -> void* { return ds.palloc(order_size); },
-                [&](Order* o) { ds.free(o, order_size); }));
-        }
-        {
-            results.push_back(run_st(
-                "jemalloc",
-                []() -> void* { return mallocx(order_size, 0); },
-                [](Order* o) { dallocx(o, 0); }));
-        }
-        {
-            results.push_back(run_st(
-                "malloc",
-                []() -> void* { return std::malloc(order_size); },
-                [](Order* o) { std::free(o); }));
-        }
-
-        print_results("Single-Threaded Order Book", results);
+        auto r = run_st("jemalloc", []()->void*{return mallocx(sizeof(Order),0);}, [](Order*o){dallocx(o,0);});
+        total_cycles += r.cycles;
+        benchmark::DoNotOptimize(r.ops);
     }
-
-    // ── Multi-threaded ───────────────────────────────────────────────────
-    {
-        size_t num_threads = std::min<size_t>(std::thread::hardware_concurrency(), 8);
-        if (num_threads < 2) num_threads = 2;
-
-        char title[128];
-        std::snprintf(title, sizeof(title),
-                      "Multi-Threaded Order Book (%zu threads, shared allocator)", num_threads);
-
-        std::vector<BenchResult> results;
-
-        {
-            pool p(order_size, POOL_CAPACITY);
-            results.push_back(run_mt(
-                "Pool", num_threads,
-                [&]() -> void* { return p.alloc(); },
-                [&](Order* o) { p.free(o); }));
-        }
-        {
-            slab<order_slab_cfg> s{};
-            results.push_back(run_mt(
-                "Slab (TLC)", num_threads,
-                [&]() -> void* { return s.palloc(order_size); },
-                [&](Order* o) { s.free(o, order_size); }));
-        }
-        {
-            default_dynamic_slab ds{};
-            results.push_back(run_mt(
-                "Dynamic Slab", num_threads,
-                [&]() -> void* { return ds.palloc(order_size); },
-                [&](Order* o) { ds.free(o, order_size); }));
-        }
-        {
-            results.push_back(run_mt(
-                "jemalloc", num_threads,
-                []() -> void* { return mallocx(order_size, 0); },
-                [](Order* o) { dallocx(o, 0); }));
-        }
-        {
-            results.push_back(run_mt(
-                "malloc", num_threads,
-                []() -> void* { return std::malloc(order_size); },
-                [](Order* o) { std::free(o); }));
-        }
-
-        print_results(title, results);
-    }
-
-    return 0;
+    state.counters["cycles/op"] = (double)total_cycles / (double)(state.iterations() * OPS_LIMIT);
 }
+BENCHMARK(BM_OrderBook_Jemalloc_ST)->Unit(benchmark::kMillisecond);
+
+static void BM_OrderBook_Malloc_ST(benchmark::State& state)
+{
+    uint64_t total_cycles = 0;
+    for (auto _ : state)
+    {
+        auto r = run_st("malloc", []()->void*{return std::malloc(sizeof(Order));}, [](Order*o){std::free(o);});
+        total_cycles += r.cycles;
+        benchmark::DoNotOptimize(r.ops);
+    }
+    state.counters["cycles/op"] = (double)total_cycles / (double)(state.iterations() * OPS_LIMIT);
+}
+BENCHMARK(BM_OrderBook_Malloc_ST)->Unit(benchmark::kMillisecond);
+
+BENCHMARK_MAIN();

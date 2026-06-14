@@ -1,50 +1,34 @@
-
-=== Pool Allocator Stress Test ===
-Pool configuration: 128 byte blocks, 1000000 blocks
-
---- Test 1: Partial Pool Cycles ---
-Cycles:           1000
-Allocs per cycle: 50000 (50% of pool)
-
-[Test 1 Results]
-Total time:       1.246 s
-Total operations: 100000000 (alloc + free)
-Avg per op:       0.01246 us
-Ops per second:   8.02566e+07
-Sanity check:     PASSED (all blocks freed)
-[PASSED] Test 1: Partial pool cycles
-
---- Test 2: Full Pool Exhaustion Cycles ---
-Cycles:           1000
-Allocs per cycle: 1000000 (100% of pool)
-
-[Test 2 Results]
-Total time:       25.9812 s
-Total operations: 2000000000 (alloc + free)
-Avg per op:       0.0129906 us
-Ops per second:   7.69788e+07
-Sanity check:     PASSED (all blocks freed)
-[PASSED] Test 2: Full pool exhaustion cycles
-
-========================================
-[PASSED] All pool stress tests passed!
-========================================
-
+2026-06-14T14:59:18-07:00
+Running build/Release/pool_stress
+Run on (12 X 4600 MHz CPU s)
+CPU Caches:
+  L1 Data 48 KiB (x6)
+  L1 Instruction 32 KiB (x6)
+  L2 Unified 512 KiB (x6)
+  L3 Unified 12288 KiB (x1)
+Load Average: 1.31, 0.53, 0.33
+***WARNING*** CPU scaling is enabled, the benchmark real time measurements may be noisy and will incur extra overhead.
+---------------------------------------------------------------------------------
+Benchmark                       Time             CPU   Iterations UserCounters...
+---------------------------------------------------------------------------------
+BM_Pool_AllocFree            6.37 ns         6.30 ns    112088925 items_per_second=317.222M/s
+BM_Pool_PartialCycle        0.178 ms        0.176 ms         3987 items_per_second=567.603M/s
+BM_Pool_FullExhaustion      0.353 ms        0.352 ms         1979 items_per_second=567.855M/s
 
  Performance counter stats for 'build/Release/pool_stress':
 
-      106775921660      cycles:u                                                              
-      119178204201      instructions:u                                                        
-         389823519      cache-references:u                                                    
-         141517329      cache-misses:u                                                        
-       30221894102      L1-dcache-loads:u                                                     
-         413349878      L1-dcache-load-misses:u                                               
-                 0      mem_load_l3_hit_retired.xsnp_hitm:u                                      
-                 8      ocr.demand_rfo.l3_hit.snoop_hitm:u                                      
+    11,788,906,427      cycles:u                                                              
+    41,441,278,225      instructions:u                                                        
+        78,885,104      cache-references:u                                                    
+           263,518      cache-misses:u                                                        
+     7,928,588,428      L1-dcache-loads:u                                                     
+       143,224,407      L1-dcache-load-misses:u                                               
+                 1      mem_load_l3_hit_retired.xsnp_hitm:u                                      
+                 0      ocr.demand_rfo.l3_hit.snoop_hitm:u                                      
 
-      27.229233715 seconds time elapsed
+       2.790035292 seconds time elapsed
 
-      24.002892000 seconds user
-       3.157900000 seconds sys
+       2.749405000 seconds user
+       0.016199000 seconds sys
 
 

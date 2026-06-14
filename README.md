@@ -1,6 +1,6 @@
 # Palloc
 
-A C++20 memory allocator library built around the insight that the caller usually knows the allocation size. Trading API generality for ~1.5x speedup over jemalloc on small fixed-size workloads.
+A C++20 memory allocator library built around the insight that the caller usually knows the allocation size. Trading API generality for a consistent speedup over jemalloc on small fixed-size workloads.
 
 `C++20` · `CMake` · `Catch2 v3` · `TSan` · `ASan` · `Linux` · `macOS` · `Windows` · `GCC` · `Clang`
 
@@ -8,12 +8,12 @@ A C++20 memory allocator library built around the insight that the caller usuall
 
 ## Highlights
 
-- **~1.6x faster than jemalloc** on single-threaded alloc+free across 8B-4096B size classes (8.1-8.8 cycles/op vs 12.6-16.2).
-- **2.2B ops/s under 12-thread contention** via a lock-free thread-local cache backed by a lock-free atomic-bitmap pool.
-- **Mutex-free alloc and free on all non-deprecated paths.** No mutex on alloc or free. TLC hits are array index ops (plus one acquire epoch load); TLC misses fall through to atomic CAS on bitmap words. Pool growth calls the OS to commit pages.
-- **Zero data races, zero memory errors** across 128 test cases (238K+ assertions) under both ThreadSanitizer and AddressSanitizer.
+- **~1.7x faster than jemalloc** on single-threaded alloc+free across 8B–1024B size classes (14.7–14.9 cycles/op vs 25.0–26.5, RDTSC-measured).
+- **Contention-resistant under 16 threads** via a lock-free thread-local cache backed by a lock-free atomic-bitmap pool. Slab degrades to 2.14x single-thread at 16 threads; jemalloc degrades to 2.46x.
+- **Mutex-free alloc and free on all non-deprecated paths.** TLC hits are a plain array index op plus one acquire epoch load. TLC misses fall through to `fetch_or` on bitmap words (alloc) or `fetch_and` (free). Pool growth calls the OS to commit pages.
+- **Zero data races, zero memory errors** across 153 test cases (235K+ assertions) under both ThreadSanitizer and AddressSanitizer.
 - **No system heap dependency** for any non-deprecated allocator. Memory is sourced directly from the OS (`mmap` on Linux/macOS, `VirtualAlloc` on Windows).
-- **Single-threaded build mode** (`PALLOC_SINGLE_THREADED`) eliminates every `LOCK`-prefixed instruction by replacing atomics with plain values.
+- **Single-threaded build mode** (`PALLOC_SINGLE_THREADED`) eliminates every `LOCK`-prefixed instruction by replacing atomics with plain values, giving a 9x speedup on Arena alloc and a 3.1x speedup on Pool alloc+free vs the default threaded build.
 
 ---
 
@@ -21,12 +21,12 @@ A C++20 memory allocator library built around the insight that the caller usuall
 
 | Allocator | Strategy | Thread Safety | Capacity |
 |-----------|----------|---------------|----------|
-| `arena<>` | Lock-free bump pointer | Atomic `fetch_add` | Fixed |
-| `pool_view` | Non-owning bitmap allocator primitive | Lock-free atomic CAS on alloc, `fetch_and` on free | Determined by owner |
-| `pool` | Bitmap allocator (via `pool_view`) | Lock-free atomic CAS on alloc, `fetch_and` on free | Fixed |
+| `arena<>` | Bump pointer | Atomic `fetch_add` (or plain add in `PALLOC_SINGLE_THREADED`) | Fixed |
+| `pool_view` | Non-owning bitmap allocator primitive | `fetch_or` on alloc, `fetch_and` on free | Determined by owner |
+| `pool` | Bitmap allocator (via `pool_view`) | `fetch_or` on alloc, `fetch_and` on free | Fixed |
 | `slab<Config>` / `default_slab` | Multi-pool + thread-local cache | Lock-free TLC, lock-free pool fallback | Grows on demand |
 
-> **Note on `dynamic_slab`**: previously a separate allocator, now `[[deprecated]]`. `slab` was extended to grow on demand and supersedes it. `dynamic_slab` is the only place in the library that holds a mutex.
+> **Note on `dynamic_slab`**: previously a separate allocator, now `[[deprecated]]` and deleted. `slab` was extended to grow on demand and supersedes it. `dynamic_slab` was the only allocator in the library that holds a mutex.
 
 ---
 
@@ -92,8 +92,8 @@ flowchart TD
     SlabCall --> Route["size_to_index(size)<br/>constant-time bit ops + LUT<br/>no pointer lookup"]
     Route --> TLC{"thread-local cache<br/>per thread, per slab"}
     TLC -->|Hit| Hot["array index pop/push<br/>+ one acquire epoch load"]
-    TLC -->|Miss / Overflow| Pool["pool_view for size class<br/>atomic bitmap over sub-region"]
-    Pool --> Bitmap["CAS on uint64 bitmap words<br/>fetch_and on free"]
+    TLC -->|Miss / Overflow| Pool["pool_view for size class<br/>fetch_or on alloc, fetch_and on free"]
+    Pool --> Bitmap["atomic uint64 bitmap words"]
     Bitmap -->|Pool exhausted| Commit["virtual_commit() next chunk<br/>inside reserved region"]
 ```
 
@@ -107,19 +107,23 @@ The default config covers 8B-4096B in 10 power-of-two size classes. Each `slab` 
 This is the biggest API tradeoff in the library. The caller almost always knows the size (it's `sizeof(T)` for typed allocations, or tracked alongside the pointer in containers). Asking for it makes `free` resolve the owning pool via a constant-time bit operation and LUT lookup (`size_to_index`: two `std::bit_width` calls + compile-time table, no pointer provenance lookup). jemalloc's `free(ptr)` must walk a radix tree keyed on address ranges to find the owning arena and size class, which costs 2-3 cache misses on a cold path. This is the primary source of Slab's edge over jemalloc, and the primary reason Slab cannot be a drop-in heap replacement.
 
 **2. Fully lock-free hot path *and* fallback.**
-The thread-local cache is the obvious lock-free part: each thread holds up to 128 cached pointers per size class, and alloc/free is a single array index increment/decrement. The less obvious part is that the pool *underneath* the TLC is also lock-free. `pool_view::alloc` and `free_batch` operate on `palloc_atomic<uint64_t>` bitmap words via `compare_exchange_weak`, with a thread-local hint that spreads concurrent threads across different bitmap words to reduce contended CAS. There is no mutex anywhere on the alloc or free path.
+The thread-local cache is the obvious lock-free part: each thread holds up to 128 cached pointers per size class, and alloc/free is a single array index increment/decrement. The pool underneath the TLC is also lock-free. `pool_view::alloc` uses `fetch_or` on `palloc_atomic<uint64_t>` bitmap words with a thread-local hint that spreads concurrent threads across different bitmap words to reduce contention. `pool_view::free` uses `fetch_and`. There is no mutex anywhere on the alloc or free path.
 
 **3. Epoch-based TLC invalidation.**
 `slab::reset()` is the only operation that needs to invalidate other threads' caches. Instead of stop-the-world synchronization, `reset()` increments an atomic epoch counter; the next TLC access on any thread compares its cached epoch against the current epoch and discards stale entries on mismatch. This keeps the invalidation check off the hot path (one acquire atomic load, predicted not-taken) and never touches other threads directly.
 
 **4. Cache-line aligned pools.**
-`class alignas(64) pool` prevents false sharing when `pool` objects are stored in arrays. Note that `slab` internally stores `pool_view` (a non-owning view type), which is not cache-line aligned — bitmap word contention between size classes is instead mitigated by the thread-local hint that steers each thread to a different starting word.
+`class alignas(64) pool` prevents false sharing when `pool` objects are stored in arrays. `slab` internally stores `pool_view` (a non-owning view type), which is not cache-line aligned — bitmap word contention between size classes is mitigated by the thread-local hint that steers each thread to a different starting word.
 
 **5. `palloc_atomic<T>` as a compile-time switch.**
-Normally `palloc_atomic<T>` aliases `std::atomic<T>`. Under `PALLOC_SINGLE_THREADED`, it becomes a plain value wrapper with the same interface. Every atomic load, store, fetch_add, and compare_exchange in the codebase compiles down to a plain memory access, which removes every `LOCK`-prefixed instruction in the binary. Useful for thread-pinned components like per-core trading engines where the allocator is never shared.
+Every allocator takes a `bool Tthreaded` template parameter that controls whether its internal `palloc_atomic<T>` instances resolve to `std::atomic<T>` (full atomic RMWs, `LOCK`-prefixed instructions) or `plain_atomic<T>` (plain loads/stores, zero overhead). This is a per-component decision: you can have a single-threaded `arena<>` and a multi-threaded `slab<>` in the same binary.
+
+`PALLOC_SINGLE_THREADED` is a convenience flag that flips `PALLOC_THREADED_DEFAULT` from `true` to `false`, changing the default for all components at once. It does not override an explicit template argument — `slab<slab_config<>, true>` remains multi-threaded regardless of the flag.
+
+Benchmarks show a 9x speedup on Arena alloc (0.51 ns vs 4.53 ns) and a 3.1x speedup on Pool alloc+free (5.8 ns vs 18 ns) when switching from threaded to single-threaded mode. Useful for thread-pinned components like per-core trading engines where a given allocator instance is never shared across threads.
 
 **6. Reserve virtual, commit physical on demand.**
-Each slab reserves a large virtual region (no physical pages backing it), then commits pages via `mprotect(PROT_READ | PROT_WRITE)` on Linux (or `VirtualAlloc(MEM_COMMIT)` on Windows) as pools fill up. This avoids paying for physical memory until it's actually used, while keeping every pool's payload in a contiguous range that can be checked with simple pointer-bounds comparison.
+Each slab reserves a large virtual region (no physical pages backing it), then commits pages via `mprotect(PROT_READ | PROT_WRITE)` on Linux (or `VirtualAlloc(MEM_COMMIT)` on Windows) as pools fill up. This avoids paying for physical memory until it is actually used, while keeping every pool's payload in a contiguous range that enables simple pointer-bounds ownership checks.
 
 ---
 
@@ -127,37 +131,47 @@ Each slab reserves a large virtual region (no physical pages backing it), then c
 
 Headline numbers below. Full benchmark suite is in [`docs/BENCHMARKS.md`](docs/BENCHMARKS.md), with perf/flamegraph methodology in [`docs/PROFILING.md`](docs/PROFILING.md).
 
-Measured on Linux, 12-core Intel i5 11th gen, GCC `-O3 -flto`. Lower is better.
+Measured on Linux, 12-core Intel i5 11th gen (4.6 GHz), GCC `-O3 -flto`. Lower is better.
 
-### 12-thread contention, cycles/op
+### Single-threaded alloc+free by size class (cycles/op, RDTSC)
 
-| Workload | Slab (TLC) | jemalloc | malloc |
-|----------|-----------:|---------:|-------:|
-| Single size (32B) | **1.0** | 3.1 | 1.2 |
-| Mixed sizes       | 2.5 | 3.2 | **2.3** |
-| Batch-hold (500 live objects) | 8.9 | 5.2 | **3.9** |
-> Lower is better
+| Size   | Slab (TLC) | jemalloc | malloc |
+|--------|----------:|--------:|------:|
+| 8B     | **14.78** | 25.09   | 11.77 |
+| 64B    | **14.77** | 25.14   | 12.34 |
+| 256B   | **14.72** | 25.37   | 12.50 |
+| 1024B  | **14.83** | 26.53   | 15.63 |
 
-Slab leads on single-size contention patterns. Once threads hold more than ~128 live objects simultaneously, the TLC overflows and refills hit contended atomic CAS on the shared pool bitmap, where jemalloc's per-arena design wins.
+Slab's TLC hit path is flat across all size classes: one plain epoch load, one LUT index, one array pop. jemalloc walks a radix tree on every `free(ptr)`.
 
-### Realistic workload: 8-thread order book simulation
+### Multi-threaded contention (alloc+free, 32B, ns/op)
 
-56-byte Order objects (allocated from a 64B slab class), random fill/cancel/match.
+| Threads | Slab | jemalloc | malloc |
+|--------:|-----:|---------:|-------:|
+| 1       | 5.19 | 9.07     | 4.32   |
+| 4       | 5.36 | 9.47     | 4.64   |
+| 8       | 7.06 | 13.7     | 6.01   |
+| 16      | 11.1 | 22.3     | 9.64   |
 
-| Allocator    | ns/op | MOps/s |
-|--------------|------:|-------:|
-| **Slab (TLC)** | **8.7** | 114.9 |
-| malloc       | 9.3   | 107.5  |
-| jemalloc     | 10.0  | 100.0  |
-| Pool         | 66.9  | 14.9   |
-> ns/op lower is better
+Slab leads jemalloc at all thread counts. At 16 threads Slab degrades 2.14x vs jemalloc's 2.46x.
+
+### Realistic workload: order book simulation (single-threaded)
+
+56-byte Order objects (64B slab class), 1M random add/cancel/match ops. `cycles/op` is RDTSC over the op loop only.
+
+| Allocator      | cycles/op |
+|----------------|----------:|
+| **Slab (TLC)** | **138.0** |
+| malloc         | 139.6     |
+| jemalloc       | 152.1     |
+| Pool           | 152.4     |
 
 ---
 
 ## Limitations
 
-- **Caller must track sizes.** `slab::free(ptr, size)` is the source of the perf advantage. It also means Slab is not a drop-in `malloc` replacement. It fits object pools, per-request buffers, and typed containers, where the size is known statically or carried alongside the pointer.
-- **Batch-hold degrades.** Threads holding more than ~128 live objects simultaneously overflow the TLC and start hitting contended atomic CAS on the pool's bitmap words. Lock-free does not mean contention-free: under heavy concurrent batch-hold, jemalloc's per-arena partitioning still wins.
+- **Caller must track sizes.** `slab::free(ptr, size)` is the source of the performance advantage and the reason Slab is not a drop-in `malloc` replacement. It fits object pools, per-request buffers, and typed containers where the size is known statically or carried alongside the pointer.
+- **Batch-hold degrades.** Threads holding more than ~128 live objects simultaneously overflow the TLC and hit contended atomic operations on the shared pool bitmap. Lock-free does not mean contention-free: under heavy concurrent batch-hold, jemalloc's per-arena partitioning wins.
 - **`slab::reset()` and `slab::shrink()` are not thread-safe.** They are intended for quiescent-state cleanup, not concurrent operation.
 
 ---

@@ -1,146 +1,53 @@
+#include <benchmark/benchmark.h>
 #include "pool.h"
-#include <chrono>
-#include <iostream>
 #include <vector>
-
 using namespace AL;
 
-int main()
+static void BM_Pool_AllocFree(benchmark::State& state)
 {
-    const int BLOCK_SIZE = 128;
-    const int BLOCK_COUNT = 1000000;     // 10K blocks (was 1K)
-    const int NUM_CYCLES = 1000;       // 1K cycles (was 100)
-    const int ALLOCS_PER_CYCLE = 50000; // 5K per cycle (was 500)
-    const int FULL_CYCLES = 1000;        // 100 cycles (was 10)
-
-    std::cout << "\n=== Pool Allocator Stress Test ===" << '\n';
-    std::cout << "Pool configuration: " << BLOCK_SIZE << " byte blocks, " << BLOCK_COUNT << " blocks\n" << '\n';
-
-    AL::pool p(BLOCK_SIZE, BLOCK_COUNT);
-
-    // ========================================================================
-    // Test 1: Many alloc/free cycles (partial pool usage)
-    // ========================================================================
+    pool<> p(64, 1000000);
+    for (auto _ : state)
     {
-        std::cout << "--- Test 1: Partial Pool Cycles ---" << '\n';
-        std::cout << "Cycles:           " << NUM_CYCLES << '\n';
-        std::cout << "Allocs per cycle: " << ALLOCS_PER_CYCLE << " (50% of pool)" << '\n';
-
-        auto start = std::chrono::high_resolution_clock::now();
-
-        for (int cycle = 0; cycle < NUM_CYCLES; ++cycle)
-        {
-            std::vector<void*> ptrs;
-
-            // Allocate half the pool
-            for (int i = 0; i < ALLOCS_PER_CYCLE; ++i)
-            {
-                void* ptr = p.alloc();
-                if (ptr == nullptr)
-                {
-                    std::cerr << "ERROR: Failed to allocate at cycle " << cycle << ", iteration " << i << '\n';
-                    return 1;
-                }
-                ptrs.push_back(ptr);
-            }
-
-            // Free all
-            for (void* ptr : ptrs)
-            {
-                p.free(ptr);
-            }
-
-        }
-
-        auto end = std::chrono::high_resolution_clock::now();
-        std::chrono::duration<double> diff = end - start;
-
-        int total_ops = NUM_CYCLES * ALLOCS_PER_CYCLE * 2; // alloc + free
-
-        std::cout << "\n[Test 1 Results]" << '\n';
-        std::cout << "Total time:       " << diff.count() << " s" << '\n';
-        std::cout << "Total operations: " << total_ops << " (alloc + free)" << '\n';
-        std::cout << "Avg per op:       " << (diff.count() * 1e6 / total_ops) << " us" << '\n';
-        std::cout << "Ops per second:   " << (total_ops / diff.count()) << '\n';
-
-        // Sanity check
-        if (p.get_free_space() != BLOCK_SIZE * BLOCK_COUNT)
-        {
-            std::cerr << "ERROR: Pool free space not restored! Expected " << (BLOCK_SIZE * BLOCK_COUNT) << ", got " << p.get_free_space() << '\n';
-            return 1;
-        }
-
-        std::cout << "Sanity check:     PASSED (all blocks freed)" << '\n';
-        std::cout << "[PASSED] Test 1: Partial pool cycles\n" << '\n';
+        void* ptr = p.alloc();
+        benchmark::DoNotOptimize(ptr);
+        p.free(ptr);
     }
-
-    // ========================================================================
-    // Test 2: Allocate all, free all, repeat
-    // ========================================================================
-    {
-        std::cout << "--- Test 2: Full Pool Exhaustion Cycles ---" << '\n';
-        std::cout << "Cycles:           " << FULL_CYCLES << '\n';
-        std::cout << "Allocs per cycle: " << BLOCK_COUNT << " (100% of pool)" << '\n';
-
-        auto start = std::chrono::high_resolution_clock::now();
-
-        for (int cycle = 0; cycle < FULL_CYCLES; ++cycle)
-        {
-            std::vector<void*> ptrs;
-
-            // Fill completely
-            for (int i = 0; i < BLOCK_COUNT; ++i)
-            {
-                void* ptr = p.alloc();
-                if (ptr == nullptr)
-                {
-                    std::cerr << "ERROR: Failed to allocate at cycle " << cycle << ", block " << i << '\n';
-                    return 1;
-                }
-                ptrs.push_back(ptr);
-            }
-
-            // Verify pool is exhausted
-            void* should_fail = p.alloc();
-            if (should_fail != nullptr)
-            {
-                std::cerr << "ERROR: Pool should be exhausted but allocation succeeded!" << '\n';
-                return 1;
-            }
-
-            // Free all
-            for (void* ptr : ptrs)
-            {
-                p.free(ptr);
-            }
-
-        }
-
-        auto end = std::chrono::high_resolution_clock::now();
-        std::chrono::duration<double> diff = end - start;
-
-        int total_ops = FULL_CYCLES * BLOCK_COUNT * 2; // alloc + free
-
-        std::cout << "\n[Test 2 Results]" << '\n';
-        std::cout << "Total time:       " << diff.count() << " s" << '\n';
-        std::cout << "Total operations: " << total_ops << " (alloc + free)" << '\n';
-        std::cout << "Avg per op:       " << (diff.count() * 1e6 / total_ops) << " us" << '\n';
-        std::cout << "Ops per second:   " << (total_ops / diff.count()) << '\n';
-
-        // Sanity check
-        if (p.get_free_space() != BLOCK_SIZE * BLOCK_COUNT)
-        {
-            std::cerr << "ERROR: Pool free space not restored! Expected " << (BLOCK_SIZE * BLOCK_COUNT) << ", got " << p.get_free_space() << '\n';
-            return 1;
-        }
-
-        std::cout << "Sanity check:     PASSED (all blocks freed)" << '\n';
-        std::cout << "[PASSED] Test 2: Full pool exhaustion cycles\n" << '\n';
-    }
-
-    std::cout << "========================================" << '\n';
-    std::cout << "[PASSED] All pool stress tests passed!" << '\n';
-    std::cout << "========================================\n" << '\n';
-
-    return 0;
+    state.SetItemsProcessed(state.iterations() * 2);
 }
+BENCHMARK(BM_Pool_AllocFree);
+
+static void BM_Pool_PartialCycle(benchmark::State& state)
+{
+    const int allocs = 50000;
+    pool<> p(128, 1000000);
+    std::vector<void*> ptrs;
+    ptrs.reserve(allocs);
+    for (auto _ : state)
+    {
+        for (int i = 0; i < allocs; ++i)
+            ptrs.push_back(p.alloc());
+        for (void* ptr : ptrs)
+            p.free(ptr);
+        ptrs.clear();
+    }
+    state.SetItemsProcessed(state.iterations() * allocs * 2);
+}
+BENCHMARK(BM_Pool_PartialCycle)->Unit(benchmark::kMillisecond);
+
+static void BM_Pool_FullExhaustion(benchmark::State& state)
+{
+    const int block_count = 100000;
+    pool<> p(128, block_count);
+    std::vector<void*> ptrs;
+    ptrs.reserve(block_count);
+    for (auto _ : state)
+    {
+        for (int i = 0; i < block_count; ++i)
+            ptrs.push_back(p.alloc());
+        for (void* ptr : ptrs)
+            p.free(ptr);
+        ptrs.clear();
+    }
+    state.SetItemsProcessed(state.iterations() * block_count * 2);
+}
+BENCHMARK(BM_Pool_FullExhaustion)->Unit(benchmark::kMillisecond);

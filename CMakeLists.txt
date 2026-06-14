@@ -162,36 +162,54 @@ if(PALLOC_BUILD_TESTS AND NOT CMAKE_BUILD_TYPE STREQUAL "Release")
 endif()
 
 # -----------------------
+# -----------------------
 # Stress Tests
 # -----------------------
 if(PALLOC_BUILD_STRESS_TESTS)
+  # Google Benchmark: prefer system install, fall back to FetchContent
+  find_package(benchmark QUIET)
+  if(NOT benchmark_FOUND)
+    message(STATUS "benchmark not found via find_package, fetching via FetchContent")
+    include(FetchContent)
+    FetchContent_Declare(
+      googlebenchmark
+      GIT_REPOSITORY https://github.com/google/benchmark.git
+      GIT_TAG        v1.9.1
+      GIT_SHALLOW    TRUE
+    )
+    set(BENCHMARK_ENABLE_TESTING OFF CACHE BOOL "" FORCE)
+    set(BENCHMARK_ENABLE_INSTALL OFF CACHE BOOL "" FORCE)
+    FetchContent_MakeAvailable(googlebenchmark)
+  endif()
+
   find_library(JEMALLOC_LIB jemalloc)
   find_path(JEMALLOC_INCLUDE jemalloc/jemalloc.h)
+
+  set(JEMALLOC_STRESS_TESTS
+    jemalloc_vs_palloc
+    dynamic_slab_vs_jemalloc
+    slab_vs_jemalloc
+    allocator_showdown
+    order_book_sim
+    market_data_replay
+    fragmentation_stress
+    producer_consumer_sim
+  )
 
   file(GLOB STRESS_SRCS "stress_tests/*.cpp")
   foreach(stress_src ${STRESS_SRCS})
     get_filename_component(test_name ${stress_src} NAME_WE)
     add_executable(${test_name} ${stress_src})
-    set(JEMALLOC_STRESS_TESTS
-      jemalloc_vs_palloc
-      dynamic_slab_vs_jemalloc
-      slab_vs_jemalloc
-      allocator_showdown
-      order_book_sim
-      market_data_replay
-      fragmentation_stress
-      producer_consumer_sim
-    )
     if(test_name IN_LIST JEMALLOC_STRESS_TESTS)
       if(JEMALLOC_LIB AND JEMALLOC_INCLUDE)
         target_include_directories(${test_name} PRIVATE ${JEMALLOC_INCLUDE})
-        target_link_libraries(${test_name} PRIVATE palloc ${JEMALLOC_LIB})
+        target_link_libraries(${test_name} PRIVATE palloc ${JEMALLOC_LIB} benchmark::benchmark_main)
       else()
         message(WARNING "jemalloc not found - skipping ${test_name} target")
         continue()
       endif()
     else()
-      target_link_libraries(${test_name} PRIVATE palloc)
+      target_link_libraries(${test_name} PRIVATE palloc benchmark::benchmark_main)
     endif()
     if(PALLOC_STATIC_LINKING)
       target_link_options(${test_name} PRIVATE -static -static-libgcc -static-libstdc++)

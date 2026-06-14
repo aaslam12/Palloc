@@ -1,66 +1,54 @@
-
-=== Slab TLC (Thread-Local Cache) Stress Test ===
-Threads: 12
-
---- Test 1: Single-thread TLC vs direct-pool latency ---
-  (all size classes now use TLC)
-    8B [TLC]: 2.1718 ns/op
-   16B [TLC]: 2.15383 ns/op
-   32B [TLC]: 2.16168 ns/op
-   64B [TLC]: 2.21891 ns/op
-  128B [TLC]: 2.31494 ns/op
-  256B [TLC]: 2.29811 ns/op
-  512B [TLC]: 2.39313 ns/op
-
---- Test 2: TLC batch refill/flush pressure ---
-  Hold count:  129 (> one batch = 128)
-  Cycles:      50000
-  ns/op:       3.18777
-
---- Test 3: Concurrent TLC all size classes ---
-  Threads:   12
-  Total ops: 12000000
-  Elapsed:   0.00630695 s
-  Throughput:1902664142 ops/s
-
---- Test 4: Epoch invalidation under concurrent alloc ---
-  Resets performed: 20
-  Elapsed:          0.101605 s
-  [Allocators recovered from epoch invalidation without errors]
-
---- Test 5a: Multi-slab TLC no-churn (slabs == MAX_CACHED_SLABS = 4) ---
-  Threads:    12
-  Total ops:  2400000
-  Elapsed:    0.0167193 s
-  Throughput: 143546705 ops/s
-  ns/op:      6.96637
-
---- Test 5b: Multi-slab TLC churn (slabs = 8 > MAX_CACHED_SLABS = 4) ---
-  Threads:    12
-  Total ops:  2400000
-  Elapsed:    0.0983667 s
-  Throughput: 24398507 ops/s
-  ns/op:      40.9861
-
-=================================================
-[PASSED] All TLC stress tests passed!
-=================================================
-
+2026-06-14T14:58:52-07:00
+Running build/Release/slab_tlc_stress
+Run on (12 X 4600 MHz CPU s)
+CPU Caches:
+  L1 Data 48 KiB (x6)
+  L1 Instruction 32 KiB (x6)
+  L2 Unified 512 KiB (x6)
+  L3 Unified 12288 KiB (x1)
+Load Average: 0.19, 0.28, 0.25
+***WARNING*** CPU scaling is enabled, the benchmark real time measurements may be noisy and will incur extra overhead.
+-----------------------------------------------------------------------------------------------
+Benchmark                                     Time             CPU   Iterations UserCounters...
+-----------------------------------------------------------------------------------------------
+BM_Slab_TLC/8                              5.99 ns         5.98 ns    114964204 items_per_second=334.325M/s
+BM_Slab_TLC/16                             5.94 ns         5.93 ns    116946586 items_per_second=337.176M/s
+BM_Slab_TLC/32                             6.00 ns         5.99 ns    115648371 items_per_second=334.09M/s
+BM_Slab_TLC/64                             6.02 ns         6.00 ns    116269874 items_per_second=333.073M/s
+BM_Slab_TLC/128                            6.05 ns         6.03 ns    116196289 items_per_second=331.427M/s
+BM_Slab_TLC/256                            6.03 ns         6.02 ns    117843219 items_per_second=332.479M/s
+BM_Slab_TLC/512                            6.00 ns         5.99 ns    117116454 items_per_second=333.798M/s
+BM_Slab_TLC_BatchPressure                   700 ns          698 ns      1020057 items_per_second=369.491M/s
+BM_Slab_TLC_Concurrent/threads:1           6.13 ns         6.12 ns    114292751 items_per_second=326.694M/s
+BM_Slab_TLC_Concurrent/threads:2           6.38 ns         6.37 ns    114129188 items_per_second=314.012M/s
+BM_Slab_TLC_Concurrent/threads:4           6.51 ns         6.48 ns    111836596 items_per_second=308.546M/s
+BM_Slab_TLC_Concurrent/threads:8           8.86 ns         8.82 ns     75743688 items_per_second=226.796M/s
+BM_Slab_TLC_Concurrent/threads:16          14.9 ns         11.8 ns     60797056 items_per_second=170.065M/s
+BM_Slab_MultiSlab_NoChurn/threads:1        6.65 ns         6.64 ns    106181275 items_per_second=301.345M/s
+BM_Slab_MultiSlab_NoChurn/threads:2        6.66 ns         6.63 ns    104827424 items_per_second=301.7M/s
+BM_Slab_MultiSlab_NoChurn/threads:4        6.84 ns         6.81 ns    105103052 items_per_second=293.86M/s
+BM_Slab_MultiSlab_NoChurn/threads:8        9.65 ns         9.60 ns     71137480 items_per_second=208.226M/s
+BM_Slab_MultiSlab_NoChurn/threads:16       16.0 ns         12.8 ns     55928576 items_per_second=155.928M/s
+BM_Slab_MultiSlab_Churn/threads:1          75.8 ns         75.6 ns      9256458 items_per_second=26.4491M/s
+BM_Slab_MultiSlab_Churn/threads:2          77.2 ns         77.0 ns      9128488 items_per_second=25.979M/s
+BM_Slab_MultiSlab_Churn/threads:4           109 ns          109 ns      6448912 items_per_second=18.3465M/s
+BM_Slab_MultiSlab_Churn/threads:8           191 ns          190 ns      3282832 items_per_second=10.5097M/s
+BM_Slab_MultiSlab_Churn/threads:16          335 ns          261 ns      2759888 items_per_second=7.64917M/s
 
  Performance counter stats for 'build/Release/slab_tlc_stress':
 
-        5672982421      cycles:u                                                              
-        5417332264      instructions:u                                                        
-          35078388      cache-references:u                                                    
-           2556945      cache-misses:u                                                        
-         917238366      L1-dcache-loads:u                                                     
-          19832186      L1-dcache-load-misses:u                                               
-           4821652      mem_load_l3_hit_retired.xsnp_hitm:u                                      
-           7020499      ocr.demand_rfo.l3_hit.snoop_hitm:u                                      
+    86,786,730,743      cycles:u                                                              
+   347,311,735,237      instructions:u                                                        
+       219,233,576      cache-references:u                                                    
+           809,716      cache-misses:u                                                        
+    68,922,200,334      L1-dcache-loads:u                                                     
+       128,950,160      L1-dcache-load-misses:u                                               
+        17,483,641      mem_load_l3_hit_retired.xsnp_hitm:u                                      
+         3,452,130      ocr.demand_rfo.l3_hit.snoop_hitm:u                                      
 
-       0.373191625 seconds time elapsed
+      13.808673350 seconds time elapsed
 
-       1.352680000 seconds user
-       0.049575000 seconds sys
+      19.906682000 seconds user
+       2.281951000 seconds sys
 
 
