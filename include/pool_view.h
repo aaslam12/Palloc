@@ -67,43 +67,48 @@ template<bool Tthreaded>
 static uint64_t claim_bits_in_word(
     palloc_atomic<uint64_t, Tthreaded>* words, size_t w, uint64_t& word, size_t num_slots, size_t needed, size_t already_found) noexcept
 {
-    uint64_t claimed = 0, new_word = 0;
-
-    do
-    {
-        claimed = 0;
-
-        if (word == ~uint64_t(0))
-            break;
-
-        uint64_t free_bits = ~word;
+    // lambda
+    auto compute_claim = [&](uint64_t cur) -> std::pair<uint64_t, uint64_t> {
+        if (cur == ~uint64_t(0))
+            return {0, 0};
+        uint64_t free_bits = ~cur, claimed = 0;
         size_t tmp = already_found;
-
         while (free_bits && tmp < already_found + needed)
         {
             size_t bit = static_cast<size_t>(std::countr_zero(free_bits));
-            size_t slot = w * 64 + bit;
-
-            if (slot >= num_slots)
-            {
-                free_bits = 0;
+            if (w * 64 + bit >= num_slots)
                 break;
-            }
-
             claimed |= uint64_t(1) << bit;
             free_bits &= free_bits - 1;
-
             ++tmp;
         }
+        return {claimed, cur | claimed};
+    };
 
-        if (!claimed)
-            break;
+    if constexpr (!Tthreaded)
+    {
+        auto [claimed, new_word] = compute_claim(word);
 
-        new_word = word | claimed;
+        if (claimed)
+            words[w].store(new_word, std::memory_order_relaxed);
+
+        return claimed;
     }
-    while (!words[w].compare_exchange_weak(word, new_word, std::memory_order_acquire, std::memory_order_relaxed));
+    else
+    {
+        uint64_t claimed = 0, new_word = 0;
+        do
+        {
+            auto [c, nw] = compute_claim(word);
+            claimed = c;
+            new_word = nw;
 
-    return claimed;
+            if (!claimed)
+                break;
+        }
+        while (!words[w].compare_exchange_weak(word, new_word, std::memory_order_acquire, std::memory_order_relaxed));
+        return claimed;
+    }
 }
 
 // write slot indices for each set bit in `mask` (word index `w`) into out[found..].
@@ -376,8 +381,16 @@ public:
         size_t next = old_committed + m_blocks_per_chunk;
         if (next > m_virtual_block_ceiling)
             return false;
-        size_t expected = old_committed;
-        return m_reserved_blocks.compare_exchange_strong(expected, next, std::memory_order_acquire, std::memory_order_relaxed);
+        if constexpr (!Tthreaded)
+        {
+            m_reserved_blocks.store(next, std::memory_order_relaxed);
+            return true;
+        }
+        else
+        {
+            size_t expected = old_committed;
+            return m_reserved_blocks.compare_exchange_strong(expected, next, std::memory_order_acquire, std::memory_order_relaxed);
+        }
     }
 
     void advance_committed(size_t new_committed) noexcept

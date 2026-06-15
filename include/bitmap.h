@@ -80,7 +80,15 @@ public:
                         return static_cast<size_t>(-1);
 
                     uint64_t new_word = word | (uint64_t(1) << bit);
-                    if (m_words[w].compare_exchange_weak(word, new_word, std::memory_order_acquire, std::memory_order_relaxed))
+                    if constexpr (!Tthreaded)
+                    {
+                        m_words[w].store(new_word, std::memory_order_relaxed);
+                        m_free_count.fetch_sub(1, std::memory_order_relaxed);
+                        if (new_word == ~uint64_t(0))
+                            m_hint.store(w + 1, std::memory_order_relaxed);
+                        return slot;
+                    }
+                    else if (m_words[w].compare_exchange_weak(word, new_word, std::memory_order_acquire, std::memory_order_relaxed))
                     {
                         m_free_count.fetch_sub(1, std::memory_order_relaxed);
                         if (new_word == ~uint64_t(0))
@@ -108,31 +116,32 @@ public:
             uint64_t claimed = 0;
             size_t local_found = 0;
             uint64_t new_word = 0;
-            do
+            auto compute_batch = [&]()
             {
-                claimed = 0;
-                local_found = 0;
+                claimed = 0; local_found = 0;
                 uint64_t free_bits = ~word;
                 size_t tmp = found;
                 while (free_bits && tmp < count)
                 {
                     size_t bit = static_cast<size_t>(std::countr_zero(free_bits));
                     size_t slot = w * 64 + bit;
-                    if (slot >= m_num_slots)
-                    {
-                        free_bits = 0;
-                        break;
-                    }
+                    if (slot >= m_num_slots) { free_bits = 0; break; }
                     claimed |= (uint64_t(1) << bit);
                     free_bits &= free_bits - 1;
-                    ++tmp;
-                    ++local_found;
+                    ++tmp; ++local_found;
                 }
-                if (claimed == 0)
-                    break;
                 new_word = word | claimed;
+            };
+            if constexpr (!Tthreaded)
+            {
+                compute_batch();
+                if (claimed) m_words[w].store(new_word, std::memory_order_relaxed);
             }
-            while (!m_words[w].compare_exchange_weak(word, new_word, std::memory_order_acquire, std::memory_order_relaxed));
+            else
+            {
+                do { compute_batch(); if (!claimed) break; }
+                while (!m_words[w].compare_exchange_weak(word, new_word, std::memory_order_acquire, std::memory_order_relaxed));
+            }
 
             if (claimed == 0)
                 continue;
@@ -227,34 +236,34 @@ public:
                 uint64_t claimed = 0;
                 size_t local_found = 0;
                 uint64_t new_word = 0;
-                do
+                auto compute_batch_lim = [&]()
                 {
-                    claimed = 0;
-                    local_found = 0;
+                    claimed = 0; local_found = 0;
                     uint64_t effective = (w == limit_words - 1) ? (word | tail_mask) : word;
-                    if (effective == ~uint64_t(0))
-                        break;
+                    if (effective == ~uint64_t(0)) return;
                     uint64_t free_bits = ~effective;
                     size_t tmp = found;
                     while (free_bits && tmp < count)
                     {
                         size_t bit = static_cast<size_t>(std::countr_zero(free_bits));
                         size_t slot = w * 64 + bit;
-                        if (slot >= limit_slots)
-                        {
-                            free_bits = 0;
-                            break;
-                        }
+                        if (slot >= limit_slots) { free_bits = 0; break; }
                         claimed |= uint64_t(1) << bit;
                         free_bits &= free_bits - 1;
-                        ++tmp;
-                        ++local_found;
+                        ++tmp; ++local_found;
                     }
-                    if (claimed == 0)
-                        break;
                     new_word = word | claimed;
+                };
+                if constexpr (!Tthreaded)
+                {
+                    compute_batch_lim();
+                    if (claimed) m_words[w].store(new_word, std::memory_order_relaxed);
                 }
-                while (!m_words[w].compare_exchange_weak(word, new_word, std::memory_order_acquire, std::memory_order_relaxed));
+                else
+                {
+                    do { compute_batch_lim(); if (!claimed) break; }
+                    while (!m_words[w].compare_exchange_weak(word, new_word, std::memory_order_acquire, std::memory_order_relaxed));
+                }
 
                 if (claimed == 0)
                     continue;

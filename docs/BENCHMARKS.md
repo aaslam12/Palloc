@@ -84,7 +84,7 @@ From `jemalloc_vs_palloc` and `allocator_showdown`, single-threaded build.
 | malloc         | 2733    | 10.68 | 49.1             |
 | jemalloc       | 3963    | 15.48 | 71.2             |
 
-Slab leads malloc by 39% and jemalloc by 58%. With `PALLOC_SINGLE_THREADED`, TLC refill calls `alloc_batch` as a plain bitmap scan with no CAS retries, reducing the refill cost relative to the threaded build's 7.93 ns/op.
+Slab leads malloc by 39% and jemalloc by 58%. With `PALLOC_SINGLE_THREADED`, TLC refill calls `alloc_batch` via `pool_view::alloc_batch`, whose `claim_bits_in_word` loop uses `plain_atomic::compare_exchange_weak` — a plain conditional store that never retries because there is no concurrent modification — reducing the refill cost relative to the threaded build's 7.93 ns/op.
 
 ---
 
@@ -133,7 +133,7 @@ From `slab_tlc_stress`, single-threaded build.
 | ns/op      | 5.45             |
 | Throughput | 367.1M ops/s     |
 
-The forced refill calls `alloc_batch` as a plain bitmap scan with no CAS retries. Throughput improves from 313 MOps/s (threaded) to 367 MOps/s (17%), reflecting the removal of `compare_exchange_weak` retry overhead.
+The forced refill calls `alloc_batch` via `pool_view::alloc_batch`. With `PALLOC_SINGLE_THREADED`, the `compare_exchange_weak` inside `claim_bits_in_word` resolves to `plain_atomic::compare_exchange_weak`, a plain conditional store that always succeeds on the first attempt and never spins. Throughput improves from 313 MOps/s (threaded) to 367 MOps/s (17%), reflecting the removal of `LOCK CMPXCHG` retry overhead.
 
 ---
 
